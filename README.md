@@ -1,21 +1,21 @@
 # WakeBridge
 
-WakeBridge is a Windows-native Rust service for managing Wake-on-LAN across multiple sites. It sends a fixed Yamaha RTX wol send command over SSH; WakeBridge never broadcasts UDP directly from the Windows host and exposes no arbitrary SSH command API.
+WakeBridgeは、複数拠点のWake-on-LANを管理するWindowsネイティブRustサービスです。Windowsホスト自身からUDP Broadcastは送信せず、SSH経由でYamaha RTXの固定コマンド`wol send`を実行します。任意SSHコマンドAPIはありません。
 
-## Features
+## 主な機能
 
-- Rust stable MSVC binary, Tokio, Axum, SQLite, Askama templates, and vanilla JavaScript
-- Sites, devices, users, settings, wake history, and audit history
-- Yamaha RTX provider behind a provider trait
-- SSH host-key fingerprint trust on first connection and strict mismatch rejection afterwards
-- SSH credentials encrypted with AES-256-GCM under a machine-protected, installation-specific DPAPI master key
-- Argon2id passwords, in-memory sessions, HttpOnly/SameSite cookies, CSRF tokens, and login throttling
-- Windows Service commands with LocalService and automatic start
-- IIS reverse-proxy configuration for 127.0.0.1:8787
+- Rust stable MSVC、Tokio、Axum、SQLite、Askama、Vanilla JavaScript
+- Sites / Devices / Users / Settings / Wake History / Audit Log
+- 将来の拡張を考慮したYamaha RTX Provider trait
+- 初回SSH Host Key Fingerprint表示・管理者Trust・以後の変更拒否
+- SSH CredentialはSQLite平文保存せず、AES-256-GCM＋Windows DPAPI保護master keyで暗号化
+- Argon2idパスワード、HttpOnly/SameSite Cookie、CSRF対策、ログインレート制限
+- LocalServiceで自動起動するWindows Service
+- IIS HTTPS終端から127.0.0.1:8787へReverse Proxy
 
-## Build
+## ビルド
 
-Open a Visual Studio Developer PowerShell with the MSVC C++ workload and Windows SDK installed:
+MSVC C++ workloadとWindows SDKを含むVisual Studio Developer PowerShellで実行します。
 
 ~~~powershell
 rustup toolchain install stable-x86_64-pc-windows-msvc
@@ -26,62 +26,80 @@ cargo test --all-targets
 cargo build --release
 ~~~
 
-The native executable is target\release\wakebridge.exe.
+生成物は`target\release\wakebridge.exe`です。Service登録後の運用バイナリは`C:\Program Files\WakeBridge\wakebridge.exe`を使用します。
 
-## First run
+## 配置と初回設定
 
-The default runtime is:
+通常の配置先は次のとおりです。
 
-- listen: 127.0.0.1:8787
-- data: C:\ProgramData\WakeBridge
-- binary: C:\Program Files\WakeBridge\wakebridge.exe
+- Listen: `127.0.0.1:8787`
+- Data: `C:\ProgramData\WakeBridge`
+- Binary: `C:\Program Files\WakeBridge\wakebridge.exe`
 
-Create the first administrator. If --password is omitted, a random password is printed once:
+管理者PowerShellで、Service登録はrelease生成物から一度だけ実行します。Service登録時にバイナリが適切な配置先へコピーされます。
 
 ~~~powershell
-.\wakebridge.exe user create --username admin --role admin
-.\wakebridge.exe run
+$Release = (Resolve-Path '.\target\release\wakebridge.exe').Path
+& $Release service install
+
+$WakeBridge = 'C:\Program Files\WakeBridge\wakebridge.exe'
+$DataDir = 'C:\ProgramData\WakeBridge'
+& $WakeBridge user create --username admin --role admin --data-dir $DataDir
+& $WakeBridge service start
+& $WakeBridge service status
 ~~~
 
-For local HTTP testing only, set WAKEBRIDGE_DEV_INSECURE_COOKIE=1. Keep the database setting Secure Cookie enabled when IIS terminates HTTPS.
+`user create`で`--password`を省略すると、安全なランダムパスワードが一度だけ表示されます。忘れた場合は、Serviceを停止してから同じ配置先のバイナリで次を実行します。
+
+~~~powershell
+$WakeBridge = 'C:\Program Files\WakeBridge\wakebridge.exe'
+$DataDir = 'C:\ProgramData\WakeBridge'
+& $WakeBridge service stop
+& $WakeBridge user reset-password --username admin --data-dir $DataDir
+& $WakeBridge service start
+~~~
+
+表示されたパスワードは安全な場所へ保存し、Git、ログ、チャットへ記録しないでください。
+
+ローカルHTTPでの開発試験だけは`WAKEBRIDGE_DEV_INSECURE_COOKIE=1`を利用できます。IISでHTTPS終端する本番構成ではSecure Cookieを有効にしてください。
 
 ## Windows Service
 
-Run an elevated PowerShell after building:
+運用操作は必ず配置済みバイナリを使用します。
 
 ~~~powershell
-.\wakebridge.exe service install
-.\wakebridge.exe user create --username admin --role admin
-.\wakebridge.exe service start
-.\wakebridge.exe service status
-.\wakebridge.exe service stop
-.\wakebridge.exe service uninstall
+$WakeBridge = 'C:\Program Files\WakeBridge\wakebridge.exe'
+& $WakeBridge service install
+& $WakeBridge service start
+& $WakeBridge service status
+& $WakeBridge service stop
+& $WakeBridge service uninstall
 ~~~
 
-Service installation preserves the data directory when uninstalled. The installer grants NT AUTHORITY\LocalService modify access to the data directory and configures Automatic start.
+アンインストールしても`C:\ProgramData\WakeBridge`のデータは削除しません。Service install時に`NT AUTHORITY\LocalService`へデータディレクトリの変更権限を付与し、Automatic Startを設定します。
 
-## IIS
+## IIS連携
 
-Install IIS URL Rewrite and Application Request Routing, enable ARR proxy, then use deploy/iis/web.config in the HTTPS IIS site. IIS terminates HTTPS and forwards only to the local WakeBridge listener.
+IIS URL RewriteとApplication Request Routingを導入し、ARR Proxyを有効化したうえで、HTTPS IIS Siteに`deploy/iis/web.config`を適用します。IISがHTTPSを終端し、WakeBridgeへはlocalhostだけで転送します。
 
-## Yamaha RTX flow
+## Yamaha RTX接続・Wake手順
 
-1. Add a Yamaha RTX Site in the UI.
-2. Enter the real router host, SSH port, LAN interface, SSH username, and credential after confirming them on the router.
-3. Select Test Connection. WakeBridge obtains the SSH SHA-256 fingerprint and runs the fixed read-only show version check.
-4. Review the displayed fingerprint and select Trust observed fingerprint for this Site.
-5. Add a Device with a normalized unicast MAC address.
-6. Select Wake. The provider builds only:
+1. UIでYamaha RTX Siteを追加します。
+2. 実機確認済みのRouter Host、SSH Port、LAN Interface、SSH Username、Credentialを入力します。
+3. Test ConnectionでFingerprint取得と固定の読み取り専用`show version`確認を行います。
+4. 表示されたFingerprintを確認し、対象SiteのTrust observed fingerprintを押します。
+5. 正規化・厳格検証されるMAC AddressでDeviceを登録します。
+6. Wakeを押すと、Providerは次の固定形式だけを生成します。
 
 ~~~text
 wol send -i 1 -c 3 lan1 02:00:00:00:00:10 192.0.2.10 udp 9
 ~~~
 
-The interface, MAC, and optional IP are validated before command construction. Replace all example values with real values; do not commit real IPs, MACs, credentials, databases, or master keys.
+上記はダミー値です。実IP、MAC、Credential、DB、master keyは公開repositoryへ含めません。
 
-Yamaha command reference: https://www.rtpro.yamaha.co.jp/RT/docs/wol/wol.html
+公式資料: https://www.rtpro.yamaha.co.jp/RT/docs/wol/wol.html
 
-## Example IIS topology
+## 構成
 
 ~~~text
 Browser --HTTPS--> IIS/ARR --HTTP localhost--> WakeBridge --SSH--> Yamaha RTX
@@ -89,14 +107,6 @@ Browser --HTTPS--> IIS/ARR --HTTP localhost--> WakeBridge --SSH--> Yamaha RTX
                                                                +--> wol send --> LAN PC
 ~~~
 
-## Security notes
+## ライセンス
 
-- SSH host-key checking cannot be bypassed for an already trusted Site.
-- The first fingerprint is shown to an administrator and is not trusted automatically.
-- Credential plaintext is never written to SQLite, audit entries, or tracing output.
-- Keep the DPAPI master-key file and the SQLite database inside the protected data directory.
-- Use a dedicated RTX account with only the permissions required by the verified firmware and command policy.
-
-## License
-
-WakeBridge is licensed under either the MIT License or Apache License 2.0, at your option. See LICENSE-MIT and LICENSE-APACHE.
+MIT LicenseまたはApache License 2.0のいずれかを選択できます。LICENSE-MITとLICENSE-APACHEを参照してください。

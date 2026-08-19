@@ -26,7 +26,7 @@ cargo test --all-targets
 cargo build --release
 ~~~
 
-生成物はtarget\release\wakebridge.exeです。
+生成物は`target\release\wakebridge.exe`です。Service登録後の運用バイナリは`C:\Program Files\WakeBridge\wakebridge.exe`を使用します。
 
 ## 初回起動
 
@@ -36,26 +36,42 @@ cargo build --release
 - Data: C:\ProgramData\WakeBridge
 - Binary: C:\Program Files\WakeBridge\wakebridge.exe
 
-初期adminを作成します。--passwordを省略すると安全なランダム値を一度だけ表示します。
+管理者PowerShellで、Service登録はrelease生成物から一度だけ実行します。Service登録時にバイナリが適切な配置先へコピーされます。
 
 ~~~powershell
-.\wakebridge.exe user create --username admin --role admin
-.\wakebridge.exe run
+$Release = (Resolve-Path '.\target\release\wakebridge.exe').Path
+& $Release service install
+
+$WakeBridge = 'C:\Program Files\WakeBridge\wakebridge.exe'
+$DataDir = 'C:\ProgramData\WakeBridge'
+& $WakeBridge user create --username admin --role admin --data-dir $DataDir
+& $WakeBridge service start
+& $WakeBridge service status
+~~~
+
+`user create`で`--password`を省略すると、安全なランダムパスワードが一度だけ表示されます。忘れた場合は、Serviceを停止してから同じ配置先のバイナリで次を実行します。
+
+~~~powershell
+$WakeBridge = 'C:\Program Files\WakeBridge\wakebridge.exe'
+$DataDir = 'C:\ProgramData\WakeBridge'
+& $WakeBridge service stop
+& $WakeBridge user reset-password --username admin --data-dir $DataDir
+& $WakeBridge service start
 ~~~
 
 ローカルHTTPでの開発試験だけはWAKEBRIDGE_DEV_INSECURE_COOKIE=1を利用できます。IISでHTTPS終端する本番構成では、UIのSecure Cookieを有効にしてください。
 
 ## Windows Service
 
-ビルド後、管理者PowerShellで実行します。
+運用操作は必ず配置済みバイナリを使用します。
 
 ~~~powershell
-.\wakebridge.exe service install
-.\wakebridge.exe user create --username admin --role admin
-.\wakebridge.exe service start
-.\wakebridge.exe service status
-.\wakebridge.exe service stop
-.\wakebridge.exe service uninstall
+$WakeBridge = 'C:\Program Files\WakeBridge\wakebridge.exe'
+& $WakeBridge service install
+& $WakeBridge service start
+& $WakeBridge service status
+& $WakeBridge service stop
+& $WakeBridge service uninstall
 ~~~
 
 アンインストールしてもデータディレクトリは削除しません。Service install時にNT AUTHORITY\LocalServiceへデータディレクトリの変更権限を付与し、Automatic Startを設定します。
