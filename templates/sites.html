@@ -3,77 +3,77 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ title }} - Sites</title>
+  <title>{{ title }} - 拠点</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <header class="topbar">
     <a class="brand" href="/">WakeBridge</a>
-    <nav><a href="/">Dashboard</a><a class="active" href="/sites">Sites</a><a href="/devices">Devices</a><a href="/users">Users</a><a href="/history">History</a><a href="/settings">Settings</a></nav>
-    <span>{{ username }} ({{ role }})</span>
+    <nav><a href="/">ダッシュボード</a><a class="active" href="/sites">拠点</a><a href="/devices">デバイス</a><a href="/users">ユーザー</a><a href="/history">履歴</a><a href="/settings">設定</a><a href="/account/password">パスワード変更</a></nav>
+    <span>{{ username }}（{% if role == "admin" %}管理者{% else %}オペレーター{% endif %}）</span>
   </header>
   <main class="container">
-    <h1>Sites</h1>
+    <h1>拠点</h1>
     {% if !message.is_empty() %}<div class="notice">{{ message }}</div>{% endif %}
     {% if !fingerprint.is_empty() %}
     <div class="notice warning">
-      実機から取得したFingerprint: <code>{{ fingerprint }}</code>。対象SiteのTrustボタンで保存してください。
+      実機から取得したFingerprint: <code>{{ fingerprint }}</code>。対象拠点の「取得したFingerprintを信頼」を押して保存してください。
     </div>
     {% endif %}
     <section class="panel">
-      <h2>Register Yamaha RTX</h2>
+      <h2>Yamaha RTX拠点を登録</h2>
       <form method="post" action="/sites" class="grid-form">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <input type="hidden" name="provider" value="yamaha_rtx">
-        <label>Name<input name="name" required maxlength="64" placeholder="宇都宮"></label>
-        <label>Router Host<input name="router_host" required placeholder="192.0.2.1"></label>
-        <label>SSH Port<input name="ssh_port" value="22" required inputmode="numeric"></label>
-        <label>LAN Interface<input name="lan_interface" required placeholder="lan1"></label>
-        <label>SSH Username<input name="ssh_username" required autocomplete="username"></label>
-        <label>SSH Credential<input type="password" name="ssh_credential" required autocomplete="new-password"></label>
-        <label class="check"><input type="checkbox" name="allow_legacy_ssh"> Legacy SSH (実機確認済みのSiteだけ)</label>
-        <label class="check"><input type="checkbox" name="enabled" checked> Enabled</label>
-        <div><button type="submit">Add Site</button></div>
+        <label>拠点名<input name="name" required maxlength="64" placeholder="宇都宮"></label>
+        <label>ルーターホスト<input name="router_host" required placeholder="192.0.2.1"></label>
+        <label>SSHポート<input name="ssh_port" value="22" required inputmode="numeric"></label>
+        <label>LANインターフェース<input name="lan_interface" required placeholder="lan1"></label>
+        <label>SSHユーザー名<input name="ssh_username" required autocomplete="username"></label>
+        <label>SSH認証情報<input type="password" name="ssh_credential" required autocomplete="new-password"></label>
+        <label class="check"><input type="checkbox" name="allow_legacy_ssh"> 古いSSH方式を許可（実機確認済みの拠点だけ）</label>
+        <label class="check"><input type="checkbox" name="enabled" checked> 有効</label>
+        <div><button type="submit">拠点を登録</button></div>
       </form>
     </section>
     <section class="panel">
-      <h2>Configured Sites</h2>
-      {% if sites.is_empty() %}<p class="muted">Siteがありません。</p>{% endif %}
+      <h2>登録済み拠点</h2>
+      {% if sites.is_empty() %}<p class="muted">拠点がありません。</p>{% endif %}
       {% for site in sites %}
       <article class="item-card">
-        <div class="item-heading"><h3>{{ site.name }}</h3><span class="pill {% if site.enabled %}ok{% else %}disabled{% endif %}">{% if site.enabled %}enabled{% else %}disabled{% endif %}</span></div>
-        <p class="muted">{{ site.provider }} / credential: {% if site.credential_present %}stored encrypted{% else %}missing{% endif %}</p>
+        <div class="item-heading"><h3>{{ site.name }}</h3><span class="pill {% if site.enabled %}ok{% else %}disabled{% endif %}">{% if site.enabled %}有効{% else %}無効{% endif %}</span></div>
+        <p class="muted">Yamaha RTX / SSH認証情報: {% if site.credential_present %}暗号化して保存済み{% else %}未設定{% endif %}</p>
         <form method="post" action="/sites/{{ site.id }}/update" class="grid-form compact">
           <input type="hidden" name="csrf" value="{{ csrf }}">
           <input type="hidden" name="provider" value="yamaha_rtx">
-          <label>Name<input name="name" value="{{ site.name }}" required maxlength="64"></label>
-          <label>Router Host<input name="router_host" value="{{ site.router_host }}" required></label>
-          <label>SSH Port<input name="ssh_port" value="{{ site.ssh_port }}" required></label>
-          <label>LAN Interface<input name="lan_interface" value="{{ site.lan_interface }}" required></label>
-          <label>SSH Username<input name="ssh_username" value="{{ site.ssh_username }}" required></label>
-          <label>New SSH Credential<input type="password" name="ssh_credential" autocomplete="new-password" placeholder="変更時だけ入力"></label>
-          <label class="check"><input type="checkbox" name="allow_legacy_ssh" {% if site.allow_legacy_ssh %}checked{% endif %}> Legacy SSH</label>
-          <label class="check"><input type="checkbox" name="enabled" {% if site.enabled %}checked{% endif %}> Enabled</label>
-          <div><button type="submit">Save Site</button></div>
+          <label>拠点名<input name="name" value="{{ site.name }}" required maxlength="64"></label>
+          <label>ルーターホスト<input name="router_host" value="{{ site.router_host }}" required></label>
+          <label>SSHポート<input name="ssh_port" value="{{ site.ssh_port }}" required></label>
+          <label>LANインターフェース<input name="lan_interface" value="{{ site.lan_interface }}" required></label>
+          <label>SSHユーザー名<input name="ssh_username" value="{{ site.ssh_username }}" required></label>
+          <label>新しいSSH認証情報<input type="password" name="ssh_credential" autocomplete="new-password" placeholder="変更時だけ入力"></label>
+          <label class="check"><input type="checkbox" name="allow_legacy_ssh" {% if site.allow_legacy_ssh %}checked{% endif %}> 古いSSH方式を許可</label>
+          <label class="check"><input type="checkbox" name="enabled" {% if site.enabled %}checked{% endif %}> 有効</label>
+          <div><button type="submit">拠点を保存</button></div>
         </form>
         <div class="actions">
           <form method="post" action="/sites/{{ site.id }}/test" class="inline-form">
             <input type="hidden" name="csrf" value="{{ csrf }}">
-            <button type="submit">Test Connection</button>
+            <button type="submit">接続テスト</button>
           </form>
           {% if !fingerprint.is_empty() %}
           <form method="post" action="/sites/{{ site.id }}/trust" class="inline-form">
             <input type="hidden" name="csrf" value="{{ csrf }}">
             <input type="hidden" name="fingerprint" value="{{ fingerprint }}">
-            <button class="secondary" type="submit">Trust observed fingerprint for this Site</button>
+            <button class="secondary" type="submit">取得したFingerprintを信頼</button>
           </form>
           {% endif %}
           <form method="post" action="/sites/{{ site.id }}/delete" class="inline-form confirm-delete">
             <input type="hidden" name="csrf" value="{{ csrf }}">
-            <button class="danger" type="submit">Delete</button>
+            <button class="danger" type="submit">削除</button>
           </form>
         </div>
-        <p>SSH Host Key: {% if site.trusted %}<code>{{ site.fingerprint }}</code>{% else %}<span class="pill warning">not trusted</span>{% endif %}</p>
+        <p>SSHホスト鍵: {% if site.trusted %}<code>{{ site.fingerprint }}</code>{% else %}<span class="pill warning">未信頼</span>{% endif %}</p>
       </article>
       {% endfor %}
     </section>

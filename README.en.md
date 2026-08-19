@@ -13,6 +13,8 @@ WakeBridge is a Windows-native Rust service for managing Wake-on-LAN across mult
 - Windows Service commands with LocalService and automatic start
 - IIS reverse-proxy configuration for 127.0.0.1:8787
 
+See the [development documentation](docs/DEVELOPMENT.ja.md) and [operations documentation](docs/OPERATIONS.ja.md) for the complete procedures. The Japanese README is the default repository landing page; this file contains the English overview.
+
 ## Build
 
 Open a Visual Studio Developer PowerShell with the MSVC C++ workload and Windows SDK installed:
@@ -58,6 +60,8 @@ $DataDir = 'C:\ProgramData\WakeBridge'
 & $WakeBridge user reset-password --username admin --data-dir $DataDir
 & $WakeBridge service start
 ~~~
+
+After login, users can change their own password from the "パスワード変更" account page. Administrators can reset another user from the Users page.
 
 For local HTTP testing only, set WAKEBRIDGE_DEV_INSECURE_COOKIE=1. Keep the database setting Secure Cookie enabled when IIS terminates HTTPS.
 

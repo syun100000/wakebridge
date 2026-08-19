@@ -3,64 +3,64 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ title }} - Devices</title>
+  <title>{{ title }} - デバイス</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <header class="topbar">
     <a class="brand" href="/">WakeBridge</a>
-    <nav><a href="/">Dashboard</a>{% if role == "admin" %}<a href="/sites">Sites</a>{% endif %}<a class="active" href="/devices">Devices</a>{% if role == "admin" %}<a href="/users">Users</a>{% endif %}<a href="/history">History</a>{% if role == "admin" %}<a href="/settings">Settings</a>{% endif %}</nav>
-    <span>{{ username }} ({{ role }})</span>
+    <nav><a href="/">ダッシュボード</a>{% if role == "admin" %}<a href="/sites">拠点</a>{% endif %}<a class="active" href="/devices">デバイス</a>{% if role == "admin" %}<a href="/users">ユーザー</a>{% endif %}<a href="/history">履歴</a>{% if role == "admin" %}<a href="/settings">設定</a>{% endif %}<a href="/account/password">パスワード変更</a></nav>
+    <span>{{ username }}（{% if role == "admin" %}管理者{% else %}オペレーター{% endif %}）</span>
   </header>
   <main class="container">
-    <h1>Devices</h1>
+    <h1>デバイス</h1>
     {% if !message.is_empty() %}<div class="notice">{{ message }}</div>{% endif %}
     {% if role == "admin" %}
     <section class="panel">
-      <h2>Register Device</h2>
+      <h2>デバイスを登録</h2>
       <form method="post" action="/devices" class="grid-form">
         <input type="hidden" name="csrf" value="{{ csrf }}">
-        <label>Name<input name="name" required maxlength="64" placeholder="2F PC"></label>
-        <label>Site<select name="site_id" required>{% for site in site_options %}<option value="{{ site.id }}">{{ site.name }}</option>{% endfor %}</select></label>
-        <label>MAC Address<input name="mac_address" required placeholder="02:00:00:00:00:10"></label>
-        <label>IP Address (optional)<input name="ip_address" inputmode="numeric" placeholder="192.0.2.10"></label>
-        <label>Description<input name="description" maxlength="500"></label>
-        <label class="check"><input type="checkbox" name="enabled" checked> Enabled</label>
-        <div><button type="submit">Add Device</button></div>
+        <label>デバイス名<input name="name" required maxlength="64" placeholder="2F PC"></label>
+        <label>拠点<select name="site_id" required>{% for site in site_options %}<option value="{{ site.id }}">{{ site.name }}</option>{% endfor %}</select></label>
+        <label>MACアドレス<input name="mac_address" required placeholder="02:00:00:00:00:10"></label>
+        <label>IPアドレス（任意）<input name="ip_address" inputmode="numeric" placeholder="192.0.2.10"></label>
+        <label>説明<input name="description" maxlength="500"></label>
+        <label class="check"><input type="checkbox" name="enabled" checked> 有効</label>
+        <div><button type="submit">デバイスを登録</button></div>
       </form>
     </section>
     {% endif %}
     <section class="panel">
-      <h2>Configured Devices</h2>
-      {% if devices.is_empty() %}<p class="muted">Deviceがありません。</p>{% endif %}
+      <h2>登録済みデバイス</h2>
+      {% if devices.is_empty() %}<p class="muted">デバイスがありません。</p>{% endif %}
       {% for device in devices %}
       <article class="item-card">
-        <div class="item-heading"><h3>{{ device.name }}</h3><span class="pill {% if device.enabled %}ok{% else %}disabled{% endif %}">{% if device.enabled %}enabled{% else %}disabled{% endif %}</span></div>
+        <div class="item-heading"><h3>{{ device.name }}</h3><span class="pill {% if device.enabled %}ok{% else %}disabled{% endif %}">{% if device.enabled %}有効{% else %}無効{% endif %}</span></div>
         <p><strong>{{ device.site_name }}</strong> · <code>{{ device.mac_address }}</code>{% if !device.ip_address.is_empty() %} · {{ device.ip_address }}{% endif %}</p>
         <p class="muted">{{ device.description }}</p>
         <div class="actions">
           <form method="post" action="/devices/{{ device.id }}/wake" class="inline-form">
             <input type="hidden" name="csrf" value="{{ csrf }}">
-            <button type="submit" {% if !device.enabled %}disabled{% endif %}>Wake</button>
+            <button type="submit" {% if !device.enabled %}disabled{% endif %}>起動（WOL）</button>
           </form>
           {% if role == "admin" %}
           <form method="post" action="/devices/{{ device.id }}/delete" class="inline-form confirm-delete">
             <input type="hidden" name="csrf" value="{{ csrf }}">
-            <button class="danger" type="submit">Delete</button>
+            <button class="danger" type="submit">削除</button>
           </form>
           {% endif %}
         </div>
         {% if role == "admin" %}
-        <details><summary>Edit device</summary>
+        <details><summary>デバイスを編集</summary>
           <form method="post" action="/devices/{{ device.id }}/update" class="grid-form compact">
             <input type="hidden" name="csrf" value="{{ csrf }}">
-            <label>Name<input name="name" value="{{ device.name }}" required></label>
-            <label>Site<select name="site_id" required>{% for site in site_options %}<option value="{{ site.id }}" {% if site.id == device.site_id %}selected{% endif %}>{{ site.name }}</option>{% endfor %}</select></label>
-            <label>MAC Address<input name="mac_address" value="{{ device.mac_address }}" required></label>
-            <label>IP Address<input name="ip_address" value="{{ device.ip_address }}"></label>
-            <label>Description<input name="description" value="{{ device.description }}"></label>
-            <label class="check"><input type="checkbox" name="enabled" {% if device.enabled %}checked{% endif %}> Enabled</label>
-            <div><button class="secondary" type="submit">Save Device</button></div>
+            <label>デバイス名<input name="name" value="{{ device.name }}" required></label>
+            <label>拠点<select name="site_id" required>{% for site in site_options %}<option value="{{ site.id }}" {% if site.id == device.site_id %}selected{% endif %}>{{ site.name }}</option>{% endfor %}</select></label>
+            <label>MACアドレス<input name="mac_address" value="{{ device.mac_address }}" required></label>
+            <label>IPアドレス<input name="ip_address" value="{{ device.ip_address }}"></label>
+            <label>説明<input name="description" value="{{ device.description }}"></label>
+            <label class="check"><input type="checkbox" name="enabled" {% if device.enabled %}checked{% endif %}> 有効</label>
+            <div><button class="secondary" type="submit">デバイスを保存</button></div>
           </form>
         </details>
         {% endif %}

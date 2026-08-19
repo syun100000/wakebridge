@@ -3,43 +3,43 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ title }} - Users</title>
+  <title>{{ title }} - ユーザー</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <header class="topbar">
     <a class="brand" href="/">WakeBridge</a>
-    <nav><a href="/">Dashboard</a><a href="/sites">Sites</a><a href="/devices">Devices</a><a class="active" href="/users">Users</a><a href="/history">History</a><a href="/settings">Settings</a></nav>
-    <span>{{ username }} ({{ role }})</span>
+    <nav><a href="/">ダッシュボード</a><a href="/sites">拠点</a><a href="/devices">デバイス</a><a class="active" href="/users">ユーザー</a><a href="/history">履歴</a><a href="/settings">設定</a><a href="/account/password">パスワード変更</a></nav>
+    <span>{{ username }}（{% if role == "admin" %}管理者{% else %}オペレーター{% endif %}）</span>
   </header>
   <main class="container">
-    <h1>Users</h1>
+    <h1>ユーザー</h1>
     {% if !message.is_empty() %}<div class="notice">{{ message }}</div>{% endif %}
     <section class="panel">
-      <h2>Create User</h2>
+      <h2>ユーザーを登録</h2>
       <form method="post" action="/users" class="grid-form">
         <input type="hidden" name="csrf" value="{{ csrf }}">
-        <label>Username<input name="username" required maxlength="64" autocomplete="username"></label>
-        <label>Password<input type="password" name="password" required minlength="12" autocomplete="new-password"></label>
-        <label>Role<select name="role"><option value="operator">operator</option><option value="admin">admin</option></select></label>
-        <div><button type="submit">Create User</button></div>
+        <label>ユーザー名<input name="username" required maxlength="64" autocomplete="username"></label>
+        <label>パスワード<input type="password" name="password" required minlength="12" autocomplete="new-password"></label>
+        <label>権限<select name="role"><option value="operator">オペレーター</option><option value="admin">管理者</option></select></label>
+        <div><button type="submit">ユーザーを登録</button></div>
       </form>
     </section>
     <section class="panel">
-      <h2>Reset Password</h2>
+      <h2>パスワードをリセット（管理者）</h2>
       <form method="post" action="/users/reset" class="grid-form">
         <input type="hidden" name="csrf" value="{{ csrf }}">
-        <label>Username<input name="username" required></label>
-        <label>New Password<input type="password" name="password" required minlength="12" autocomplete="new-password"></label>
-        <div><button class="secondary" type="submit">Reset Password</button></div>
+        <label>ユーザー名<input name="username" required></label>
+        <label>新しいパスワード<input type="password" name="password" required minlength="12" autocomplete="new-password"></label>
+        <div><button class="secondary" type="submit">パスワードをリセット</button></div>
       </form>
     </section>
     <section class="panel">
-      <h2>Configured Users</h2>
+      <h2>登録済みユーザー</h2>
       <div class="table-wrap"><table>
-        <thead><tr><th>Username</th><th>Role</th><th>Enabled</th></tr></thead>
+        <thead><tr><th>ユーザー名</th><th>権限</th><th>状態</th></tr></thead>
         <tbody>{% for user in users %}
-          <tr><td>{{ user.username }}</td><td>{{ user.role }}</td><td>{% if user.enabled %}yes{% else %}no{% endif %}</td></tr>
+          <tr><td>{{ user.username }}</td><td>{% if user.role == "admin" %}管理者{% else %}オペレーター{% endif %}</td><td>{% if user.enabled %}有効{% else %}無効{% endif %}</td></tr>
         {% endfor %}</tbody>
       </table></div>
     </section>

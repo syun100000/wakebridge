@@ -13,6 +13,8 @@ WakeBridgeは、複数拠点のWake-on-LANを管理するWindowsネイティブR
 - LocalServiceで自動起動するWindows Service
 - IIS HTTPS終端から127.0.0.1:8787へReverse Proxy
 
+開発手順は[開発ドキュメント](docs/DEVELOPMENT.ja.md)、管理者・利用者向けの操作手順は[操作ドキュメント](docs/OPERATIONS.ja.md)を参照してください。
+
 ## ビルド
 
 MSVC C++ workloadとWindows SDKを含むVisual Studio Developer PowerShellで実行します。
@@ -58,6 +60,8 @@ $DataDir = 'C:\ProgramData\WakeBridge'
 & $WakeBridge user reset-password --username admin --data-dir $DataDir
 & $WakeBridge service start
 ~~~
+
+ログイン後は、上部メニューの「パスワード変更」から現在のパスワードを確認して変更できます。管理者は「ユーザー」画面から他ユーザーのパスワードをリセットできます。
 
 ローカルHTTPでの開発試験だけはWAKEBRIDGE_DEV_INSECURE_COOKIE=1を利用できます。IISでHTTPS終端する本番構成では、UIのSecure Cookieを有効にしてください。
 

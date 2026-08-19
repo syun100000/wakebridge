@@ -3,45 +3,46 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ title }} - Dashboard</title>
+  <title>{{ title }} - ダッシュボード</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <header class="topbar">
     <a class="brand" href="/">WakeBridge</a>
     <nav>
-      <a href="/">Dashboard</a>
-      {% if role == "admin" %}<a href="/sites">Sites</a>{% endif %}
-      <a href="/devices">Devices</a>
-      {% if role == "admin" %}<a href="/users">Users</a>{% endif %}
-      <a href="/history">History</a>
-      {% if role == "admin" %}<a href="/settings">Settings</a>{% endif %}
+      <a class="active" href="/">ダッシュボード</a>
+      {% if role == "admin" %}<a href="/sites">拠点</a>{% endif %}
+      <a href="/devices">デバイス</a>
+      {% if role == "admin" %}<a href="/users">ユーザー</a>{% endif %}
+      <a href="/history">履歴</a>
+      {% if role == "admin" %}<a href="/settings">設定</a>{% endif %}
+      <a href="/account/password">パスワード変更</a>
     </nav>
     <form method="post" action="/logout" class="inline-form">
       <input type="hidden" name="csrf" value="{{ csrf }}">
-      <span>{{ username }} ({{ role }})</span>
-      <button class="link-button" type="submit">Logout</button>
+      <span>{{ username }}（{% if role == "admin" %}管理者{% else %}オペレーター{% endif %}）</span>
+      <button class="link-button" type="submit">ログアウト</button>
     </form>
   </header>
   <main class="container">
     <section class="hero">
-      <div><h1>Dashboard</h1><p>RTX経由でLAN内PCを安全に起動します。</p></div>
+      <div><h1>ダッシュボード</h1><p>RTX経由でLAN内PCを安全に起動します。</p></div>
       <span class="pill ok">HTTP {{ service_mode }}</span>
     </section>
     <section class="cards">
-      <div class="card"><span class="muted">Sites</span><strong>{{ site_count }}</strong></div>
-      <div class="card"><span class="muted">Devices</span><strong>{{ device_count }}</strong></div>
-      <div class="card"><span class="muted">Started</span><strong class="small">{{ started_at }}</strong></div>
+      <div class="card"><span class="muted">拠点数</span><strong>{{ site_count }}</strong></div>
+      <div class="card"><span class="muted">デバイス数</span><strong>{{ device_count }}</strong></div>
+      <div class="card"><span class="muted">起動日時</span><strong class="small">{{ started_at }}</strong></div>
     </section>
     <section class="panel">
-      <h2>Recent Wake History</h2>
+      <h2>最近のWOL履歴</h2>
       {% if recent_events.is_empty() %}
       <p class="muted">まだWake履歴はありません。</p>
       {% else %}
       <div class="table-wrap"><table>
-        <thead><tr><th>日時</th><th>Site</th><th>Device</th><th>状態</th><th>Message</th></tr></thead>
+        <thead><tr><th>日時</th><th>拠点</th><th>デバイス</th><th>状態</th><th>メッセージ</th></tr></thead>
         <tbody>{% for event in recent_events %}
-          <tr><td>{{ event.occurred_at }}</td><td>{{ event.site_name }}</td><td>{{ event.device_name }}</td><td><span class="pill {{ event.status }}">{{ event.status }}</span></td><td>{{ event.message }}</td></tr>
+          <tr><td>{{ event.occurred_at }}</td><td>{{ event.site_name }}</td><td>{{ event.device_name }}</td><td><span class="pill {{ event.status }}">{{ event.status_label }}</span></td><td>{{ event.message }}</td></tr>
         {% endfor %}</tbody>
       </table></div>
       {% endif %}

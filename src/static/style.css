@@ -31,6 +31,8 @@ h3 { margin: 0; font-size: 18px; }
 .card { display: flex; flex-direction: column; gap: 6px; }
 .card strong { font-size: 24px; }
 .panel { margin: 18px 0; }
+.narrow-panel { max-width: 560px; }
+.stack-form { display: grid; gap: 16px; }
 .item-card { margin: 14px 0; }
 .item-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .grid-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: end; }

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>WakeBridge Login</title>
+  <title>WakeBridge ログイン</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body class="login-page">
@@ -14,9 +14,9 @@
     <div class="notice error">{{ error }}</div>
     {% endif %}
     <form method="post" action="/login">
-      <label>Username<input name="username" autocomplete="username" required autofocus></label>
-      <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
-      <button type="submit">Login</button>
+      <label>ユーザー名<input name="username" autocomplete="username" required autofocus></label>
+      <label>パスワード<input type="password" name="password" autocomplete="current-password" required></label>
+      <button type="submit">ログイン</button>
     </form>
   </main>
 </body>

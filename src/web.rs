@@ -23,7 +23,6 @@ const SESSION_COOKIE: &str = "wakebridge_session";
 pub struct SiteView {
     pub id: i64,
     pub name: String,
-    pub provider: String,
     pub router_host: String,
     pub ssh_port: u16,
     pub lan_interface: String,
@@ -66,6 +65,7 @@ pub struct WakeView {
     pub device_name: String,
     pub site_name: String,
     pub status: String,
+    pub status_label: String,
     pub message: String,
     pub occurred_at: String,
 }
@@ -156,6 +156,16 @@ struct SettingsTemplate {
     cookie_secure: bool,
 }
 
+#[derive(Template)]
+#[template(path = "account_password.html")]
+struct AccountPasswordTemplate {
+    title: String,
+    username: String,
+    role: String,
+    csrf: String,
+    message: String,
+}
+
 #[derive(Deserialize, Default)]
 struct NoticeQuery {
     notice: Option<String>,
@@ -219,6 +229,14 @@ struct ResetPasswordForm {
 }
 
 #[derive(Deserialize)]
+struct ChangePasswordForm {
+    csrf: String,
+    current_password: String,
+    new_password: String,
+    confirm_password: String,
+}
+
+#[derive(Deserialize)]
 struct SettingsForm {
     csrf: String,
     site_title: String,
@@ -238,6 +256,10 @@ pub fn router(state: AppState) -> Router {
         .route("/", get(dashboard))
         .route("/login", get(login_page).post(login_submit))
         .route("/logout", post(logout))
+        .route(
+            "/account/password",
+            get(account_password_page).post(account_password_submit),
+        )
         .route("/sites", get(sites_page).post(site_create))
         .route("/sites/:id/update", post(site_update))
         .route("/sites/:id/delete", post(site_delete))
@@ -350,6 +372,85 @@ async fn logout(
     (jar.remove(removal), Redirect::to("/login")).into_response()
 }
 
+async fn account_password_page(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Query(query): Query<NoticeQuery>,
+) -> Response {
+    let Ok((_, session)) = session_or_redirect(&state, &jar).await else {
+        return Redirect::to("/login").into_response();
+    };
+    render_account_password(&state, &session, query.notice.unwrap_or_default()).await
+}
+
+async fn account_password_submit(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Form(form): Form<ChangePasswordForm>,
+) -> Response {
+    let Ok((_, session)) = session_or_redirect(&state, &jar).await else {
+        return Redirect::to("/login").into_response();
+    };
+    if !csrf_valid(&session, &form.csrf) {
+        return forbidden("CSRFトークンが不正です。");
+    }
+    let user = match state.db.find_user(&session.username).await {
+        Ok(Some(user)) => user,
+        Ok(None) => return forbidden("ユーザーが見つかりません。再度ログインしてください。"),
+        Err(error) => return internal_error(error, "find current user"),
+    };
+    if !verify_password(&form.current_password, &user.password_hash) {
+        return render_account_password(
+            &state,
+            &session,
+            "現在のパスワードが正しくありません。".to_owned(),
+        )
+        .await;
+    }
+    if form.new_password != form.confirm_password {
+        return render_account_password(
+            &state,
+            &session,
+            "新しいパスワードと確認入力が一致しません。".to_owned(),
+        )
+        .await;
+    }
+    let password_hash = match hash_password(&form.new_password) {
+        Ok(value) => value,
+        Err(_) => {
+            return render_account_password(
+                &state,
+                &session,
+                "パスワードは12文字以上で指定してください。".to_owned(),
+            )
+            .await
+        }
+    };
+    match state
+        .db
+        .update_password(&session.username, &password_hash)
+        .await
+    {
+        Ok(true) => {
+            let _ = state
+                .db
+                .insert_audit_event(
+                    Some(session.user_id),
+                    "user_password_changed",
+                    "user",
+                    Some(session.user_id),
+                    "",
+                )
+                .await;
+            redirect_notice("/account/password", "パスワードを変更しました。")
+        }
+        Ok(false) => {
+            render_account_password(&state, &session, "ユーザーが見つかりません。".to_owned()).await
+        }
+        Err(error) => render_account_password(&state, &session, db_error_message(error)).await,
+    }
+}
+
 async fn dashboard(State(state): State<AppState>, jar: CookieJar) -> Response {
     let Ok((_, session)) = session_or_redirect(&state, &jar).await else {
         return Redirect::to("/login").into_response();
@@ -379,9 +480,9 @@ async fn dashboard(State(state): State<AppState>, jar: CookieJar) -> Response {
         role: session.role.as_str().to_owned(),
         csrf: session.csrf_token,
         service_mode: if state.config.service_mode {
-            "Windows Service".to_owned()
+            "Windowsサービス".to_owned()
         } else {
-            "Foreground".to_owned()
+            "フォアグラウンド".to_owned()
         },
         started_at: state.started_at,
         site_count: sites.len(),
@@ -478,7 +579,7 @@ async fn site_create(
         .await;
     redirect_notice(
         "/sites",
-        "Siteを登録しました。SSH Host KeyはTest Connection後にTrustしてください。",
+        "拠点を登録しました。SSHホスト鍵は接続テスト後に信頼してください。",
     )
 }
 
@@ -548,7 +649,7 @@ async fn site_update(
         .await;
     redirect_notice(
         "/sites",
-        "Siteを更新しました。接続先情報を変更した場合は再度Trustが必要です。",
+        "拠点を更新しました。接続先情報を変更した場合は再度信頼が必要です。",
     )
 }
 
@@ -575,7 +676,7 @@ async fn site_delete(
                 .await;
             redirect_notice(
                 "/sites",
-                "Siteを削除しました。関連Deviceも削除されています。",
+                "拠点を削除しました。関連デバイスも削除されています。",
             )
         }
         Ok(false) => not_found("site not found"),
@@ -609,7 +710,7 @@ async fn site_test(
             return render_sites(
                 &state,
                 &session,
-                "SSH Credentialが未設定です。".to_owned(),
+                "SSH認証情報が未設定です。".to_owned(),
                 String::new(),
             )
             .await
@@ -636,7 +737,7 @@ async fn site_test(
             render_sites(
                 &state,
                 &session,
-                format!("Test Connection失敗: {}", safe_error_message(&error)),
+                format!("接続テスト失敗: {}", safe_error_message(&error)),
                 String::new(),
             )
             .await
@@ -669,7 +770,7 @@ async fn site_trust(
         return render_sites(
             &state,
             &session,
-            "先にTest Connectionを実行してください。".to_owned(),
+            "先に接続テストを実行してください。".to_owned(),
             String::new(),
         )
         .await;
@@ -678,7 +779,7 @@ async fn site_trust(
         return render_sites(
             &state,
             &session,
-            "表示された最新Fingerprintと一致しません。再度Test Connectionしてください。".to_owned(),
+            "表示された最新Fingerprintと一致しません。再度接続テストしてください。".to_owned(),
             String::new(),
         )
         .await;
@@ -695,7 +796,7 @@ async fn site_trust(
                     "",
                 )
                 .await;
-            redirect_notice("/sites", "SSH Host Key FingerprintをTrustしました。")
+            redirect_notice("/sites", "SSHホスト鍵Fingerprintを信頼しました。")
         }
         Ok(false) => not_found("site not found"),
         Err(error) => internal_error(error, "trust host key"),
@@ -739,7 +840,7 @@ async fn device_create(
         .flatten()
         .is_none()
     {
-        return render_devices(&state, &session, "Siteが存在しません。".to_owned()).await;
+        return render_devices(&state, &session, "拠点が存在しません。".to_owned()).await;
     }
     let device_id = match state
         .db
@@ -765,7 +866,7 @@ async fn device_create(
             "",
         )
         .await;
-    redirect_notice("/devices", "Deviceを登録しました。")
+    redirect_notice("/devices", "デバイスを登録しました。")
 }
 
 async fn device_update(
@@ -795,7 +896,7 @@ async fn device_update(
         .flatten()
         .is_none()
     {
-        return render_devices(&state, &session, "Siteが存在しません。".to_owned()).await;
+        return render_devices(&state, &session, "拠点が存在しません。".to_owned()).await;
     }
     match state
         .db
@@ -821,7 +922,7 @@ async fn device_update(
                     "",
                 )
                 .await;
-            redirect_notice("/devices", "Deviceを更新しました。")
+            redirect_notice("/devices", "デバイスを更新しました。")
         }
         Ok(false) => not_found("device not found"),
         Err(error) => render_devices(&state, &session, db_error_message(error)).await,
@@ -855,7 +956,7 @@ async fn device_delete(
                     "",
                 )
                 .await;
-            redirect_notice("/devices", "Deviceを削除しました。")
+            redirect_notice("/devices", "デバイスを削除しました。")
         }
         Ok(false) => not_found("device not found"),
         Err(error) => internal_error(error, "delete device"),
@@ -880,7 +981,7 @@ async fn device_wake(
         Err(error) => return internal_error(error, "get device"),
     };
     if !device.enabled {
-        return render_devices(&state, &session, "Deviceが無効です。".to_owned()).await;
+        return render_devices(&state, &session, "デバイスが無効です。".to_owned()).await;
     }
     let site = match state.db.get_site(device.site_id).await {
         Ok(Some(site)) => site,
@@ -888,7 +989,7 @@ async fn device_wake(
         Err(error) => return internal_error(error, "get site"),
     };
     if !site.enabled {
-        return render_devices(&state, &session, "Siteが無効です。".to_owned()).await;
+        return render_devices(&state, &session, "拠点が無効です。".to_owned()).await;
     }
     let credential = match state.site_credential(site.id).await {
         Ok(credential) => credential,
@@ -900,11 +1001,10 @@ async fn device_wake(
                     device.id,
                     site.id,
                     "failed",
-                    "SSH Credential is not configured",
+                    "SSH認証情報が未設定です。",
                 )
                 .await;
-            return render_devices(&state, &session, "SSH Credentialが未設定です。".to_owned())
-                .await;
+            return render_devices(&state, &session, "SSH認証情報が未設定です。".to_owned()).await;
         }
     };
     match state
@@ -991,11 +1091,18 @@ async fn user_create(
     };
     let role = match Role::parse(&form.role) {
         Some(role) => role,
-        None => return render_users(&state, &session, "roleが不正です。".to_owned()).await,
+        None => return render_users(&state, &session, "権限が不正です。".to_owned()).await,
     };
     let password_hash = match hash_password(&form.password) {
         Ok(value) => value,
-        Err(error) => return render_users(&state, &session, error.to_string()).await,
+        Err(_) => {
+            return render_users(
+                &state,
+                &session,
+                "パスワードは12文字以上で指定してください。".to_owned(),
+            )
+            .await
+        }
     };
     let user_id = match state
         .db
@@ -1038,7 +1145,14 @@ async fn user_reset_password(
     };
     let password_hash = match hash_password(&form.password) {
         Ok(value) => value,
-        Err(error) => return render_users(&state, &session, error.to_string()).await,
+        Err(_) => {
+            return render_users(
+                &state,
+                &session,
+                "パスワードは12文字以上で指定してください。".to_owned(),
+            )
+            .await
+        }
     };
     match state.db.update_password(&username, &password_hash).await {
         Ok(true) => {
@@ -1243,18 +1357,14 @@ async fn api_device_wake(
     if !device.enabled || !site.enabled {
         return (
             StatusCode::PRECONDITION_FAILED,
-            "Device or Site is disabled",
+            "デバイスまたは拠点が無効です。",
         )
             .into_response();
     }
     let credential = match state.site_credential(site.id).await {
         Ok(value) => value,
         Err(_) => {
-            return (
-                StatusCode::PRECONDITION_FAILED,
-                "SSH Credential is not configured",
-            )
-                .into_response()
+            return (StatusCode::PRECONDITION_FAILED, "SSH認証情報が未設定です。").into_response()
         }
     };
     match state
@@ -1381,12 +1491,21 @@ async fn render_users(state: &AppState, session: &Session, message: String) -> R
     })
 }
 
+async fn render_account_password(state: &AppState, session: &Session, message: String) -> Response {
+    render(AccountPasswordTemplate {
+        title: page_title(state).await,
+        username: session.username.clone(),
+        role: session.role.as_str().to_owned(),
+        csrf: session.csrf_token.clone(),
+        message,
+    })
+}
+
 fn site_view(record: SiteRecord, credential_present: bool) -> SiteView {
     let trusted = record.ssh_host_key_fingerprint.is_some();
     SiteView {
         id: record.id,
         name: record.name,
-        provider: record.provider,
         router_host: record.router_host,
         ssh_port: record.ssh_port,
         lan_interface: record.lan_interface,
@@ -1421,11 +1540,13 @@ fn user_view(record: UserRecord) -> UserView {
 }
 
 fn wake_view(record: WakeEventRecord) -> WakeView {
+    let status_label = wake_status_label(&record.status);
     WakeView {
-        username: record.username.unwrap_or_else(|| "system".to_owned()),
+        username: record.username.unwrap_or_else(|| "システム".to_owned()),
         device_name: record.device_name,
         site_name: record.site_name,
         status: record.status,
+        status_label,
         message: record.message,
         occurred_at: record.occurred_at,
     }
@@ -1433,9 +1554,9 @@ fn wake_view(record: WakeEventRecord) -> WakeView {
 
 fn audit_view(record: AuditEventRecord) -> AuditView {
     AuditView {
-        username: record.username.unwrap_or_else(|| "system".to_owned()),
-        action: record.action,
-        target_type: record.target_type,
+        username: record.username.unwrap_or_else(|| "システム".to_owned()),
+        action: audit_action_label(&record.action),
+        target_type: audit_target_label(&record.target_type),
         target_id: record
             .target_id
             .map(|value| value.to_string())
@@ -1443,6 +1564,48 @@ fn audit_view(record: AuditEventRecord) -> AuditView {
         details: record.details,
         occurred_at: record.occurred_at,
     }
+}
+
+fn wake_status_label(status: &str) -> String {
+    match status {
+        "success" => "成功".to_owned(),
+        "failed" => "失敗".to_owned(),
+        other => other.to_owned(),
+    }
+}
+
+fn audit_action_label(action: &str) -> String {
+    match action {
+        "login_failed" => "ログイン失敗",
+        "login_success" => "ログイン成功",
+        "site_created" => "拠点登録",
+        "site_updated" => "拠点更新",
+        "site_deleted" => "拠点削除",
+        "site_host_key_trusted" => "SSHホスト鍵を信頼",
+        "device_created" => "デバイス登録",
+        "device_updated" => "デバイス更新",
+        "device_deleted" => "デバイス削除",
+        "device_wake" => "WOL実行",
+        "device_wake_failed" => "WOL失敗",
+        "user_created" => "ユーザー登録",
+        "user_password_reset" => "パスワードリセット",
+        "user_password_changed" => "パスワード変更",
+        "settings_updated" => "設定更新",
+        other => other,
+    }
+    .to_owned()
+}
+
+fn audit_target_label(target_type: &str) -> String {
+    match target_type {
+        "auth" => "認証",
+        "site" => "拠点",
+        "device" => "デバイス",
+        "user" => "ユーザー",
+        "settings" => "設定",
+        other => other,
+    }
+    .to_owned()
 }
 
 async fn page_title(state: &AppState) -> String {
@@ -1520,10 +1683,21 @@ fn safe_error_message(error: &anyhow::Error) -> String {
 }
 
 fn forbidden(message: &str) -> Response {
+    let message = match message {
+        "admin role is required" => "管理者権限が必要です。",
+        "CSRF token is invalid" => "CSRFトークンが不正です。",
+        "CSRF token is required" => "CSRFトークンが必要です。",
+        other => other,
+    };
     (StatusCode::FORBIDDEN, message.to_owned()).into_response()
 }
 
 fn not_found(message: &str) -> Response {
+    let message = match message {
+        "site not found" => "拠点が見つかりません。",
+        "device not found" => "デバイスが見つかりません。",
+        other => other,
+    };
     (StatusCode::NOT_FOUND, message.to_owned()).into_response()
 }
 
@@ -1539,7 +1713,7 @@ struct SiteValues {
 
 fn validate_site_form(form: &SiteForm, creating: bool) -> std::result::Result<SiteValues, String> {
     if form.provider != "yamaha_rtx" {
-        return Err("Providerはyamaha_rtxのみ対応しています。".to_owned());
+        return Err("Yamaha RTX以外のProviderには対応していません。".to_owned());
     }
     let name = validate_title(&form.name)?;
     let router_host = validate_router_host(&form.router_host)?;
@@ -1552,7 +1726,7 @@ fn validate_site_form(form: &SiteForm, creating: bool) -> std::result::Result<Si
     let lan_interface = validate_interface(&form.lan_interface)?;
     let ssh_username = validate_ssh_username(&form.ssh_username)?;
     if creating && form.ssh_credential.is_empty() {
-        return Err("新規SiteにはSSH Credentialが必要です。".to_owned());
+        return Err("新規拠点にはSSH認証情報が必要です。".to_owned());
     }
     Ok(SiteValues {
         name,
@@ -1581,7 +1755,7 @@ fn validate_device_form(form: &DeviceForm) -> std::result::Result<DeviceValues, 
         .parse::<i64>()
         .ok()
         .filter(|id| *id > 0)
-        .ok_or_else(|| "Siteを選択してください。".to_owned())?;
+        .ok_or_else(|| "拠点を選択してください。".to_owned())?;
     let mac_address = normalize_mac(&form.mac_address).map_err(|error| error.to_string())?;
     let ip_address = if form.ip_address.trim().is_empty() {
         None
@@ -1589,7 +1763,7 @@ fn validate_device_form(form: &DeviceForm) -> std::result::Result<DeviceValues, 
         Some(normalize_ip(&form.ip_address).map_err(|error| error.to_string())?)
     };
     if form.description.chars().count() > 500 {
-        return Err("Descriptionは500文字以内です。".to_owned());
+        return Err("説明は500文字以内です。".to_owned());
     }
     Ok(DeviceValues {
         name,
@@ -1615,14 +1789,14 @@ fn validate_title(value: &str) -> std::result::Result<String, String> {
 fn validate_router_host(value: &str) -> std::result::Result<String, String> {
     let value = value.trim();
     if value.is_empty() || value.len() > 253 {
-        return Err("Router Hostを指定してください。".to_owned());
+        return Err("ルーターホストを指定してください。".to_owned());
     }
     if value.chars().any(|character| {
         character.is_control()
             || character.is_whitespace()
             || matches!(character, ';' | '|' | '&' | '\u{60}' | '$' | '\u{0}')
     }) {
-        return Err("Router Hostに不正な文字があります。".to_owned());
+        return Err("ルーターホストに不正な文字があります。".to_owned());
     }
     Ok(value.to_owned())
 }
@@ -1635,7 +1809,7 @@ fn validate_interface(value: &str) -> std::result::Result<String, String> {
             !character.is_ascii_alphanumeric() && !matches!(character, '.' | '_' | '-' | '/')
         })
     {
-        return Err("LAN Interfaceに不正な文字があります。".to_owned());
+        return Err("LANインターフェースに不正な文字があります。".to_owned());
     }
     Ok(value.to_owned())
 }
@@ -1648,7 +1822,7 @@ fn validate_ssh_username(value: &str) -> std::result::Result<String, String> {
             character.is_control() || character.is_whitespace() || character == ':'
         })
     {
-        return Err("SSH Usernameに不正な文字があります。".to_owned());
+        return Err("SSHユーザー名に不正な文字があります。".to_owned());
     }
     Ok(value.to_owned())
 }
@@ -1662,7 +1836,7 @@ fn validate_username(value: &str) -> std::result::Result<String, String> {
         })
     {
         return Err(
-            "Usernameは英数字、ドット、アンダースコア、ハイフンで指定してください。".to_owned(),
+            "ユーザー名は英数字、ドット、アンダースコア、ハイフンで指定してください。".to_owned(),
         );
     }
     Ok(value.to_owned())
