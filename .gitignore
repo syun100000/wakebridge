@@ -1,0 +1,12 @@
+/target/
+/data/
+*.db
+*.db-shm
+*.db-wal
+*.key
+*.pfx
+*.pem
+*.ppk
+*.log
+.env
+.env.*

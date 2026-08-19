@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }} - History</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">WakeBridge</a>
+    <nav><a href="/">Dashboard</a>{% if role == "admin" %}<a href="/sites">Sites</a>{% endif %}<a href="/devices">Devices</a>{% if role == "admin" %}<a href="/users">Users</a>{% endif %}<a class="active" href="/history">History</a>{% if role == "admin" %}<a href="/settings">Settings</a>{% endif %}</nav>
+    <span>{{ username }} ({{ role }})</span>
+  </header>
+  <main class="container">
+    <h1>Wake History</h1>
+    <section class="panel">
+      <div class="table-wrap"><table>
+        <thead><tr><th>日時</th><th>User</th><th>Site</th><th>Device</th><th>Status</th><th>Message</th></tr></thead>
+        <tbody>{% for event in wake_events %}
+          <tr><td>{{ event.occurred_at }}</td><td>{{ event.username }}</td><td>{{ event.site_name }}</td><td>{{ event.device_name }}</td><td><span class="pill {{ event.status }}">{{ event.status }}</span></td><td>{{ event.message }}</td></tr>
+        {% endfor %}</tbody>
+      </table></div>
+      {% if wake_events.is_empty() %}<p class="muted">Wake履歴はありません。</p>{% endif %}
+    </section>
+    {% if role == "admin" %}
+    <section class="panel">
+      <h2>Audit Log</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>日時</th><th>User</th><th>Action</th><th>Target</th><th>Details</th></tr></thead>
+        <tbody>{% for event in audit_events %}
+          <tr><td>{{ event.occurred_at }}</td><td>{{ event.username }}</td><td>{{ event.action }}</td><td>{{ event.target_type }} {{ event.target_id }}</td><td>{{ event.details }}</td></tr>
+        {% endfor %}</tbody>
+      </table></div>
+    </section>
+    {% endif %}
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

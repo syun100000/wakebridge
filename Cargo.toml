@@ -1,0 +1,47 @@
+[package]
+name = "wakebridge"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+description = "Multi-site Wake-on-LAN management for Yamaha RTX routers"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/syun100000/wakebridge"
+default-run = "wakebridge"
+
+[dependencies]
+aes-gcm = "0.10"
+anyhow = "1.0"
+argon2 = "0.5"
+askama = "0.12"
+async-trait = "0.1"
+axum = "0.7"
+axum-extra = { version = "0.9", features = ["cookie", "form"] }
+base64 = "0.22"
+chrono = { version = "0.4", features = ["clock", "serde"] }
+clap = { version = "4.5", features = ["derive"] }
+hex = "0.4"
+rand = "0.8"
+regex = "1.10"
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+ssh2 = "0.9"
+thiserror = "1.0"
+tokio = { version = "1.40", features = ["full"] }
+tower-http = { version = "0.5", features = ["trace", "timeout"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+urlencoding = "2.1"
+
+[target.'cfg(windows)'.dependencies]
+windows-service = "0.7"
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security_Cryptography",
+    "Win32_System_Memory",
+] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"

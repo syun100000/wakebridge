@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }} - Users</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">WakeBridge</a>
+    <nav><a href="/">Dashboard</a><a href="/sites">Sites</a><a href="/devices">Devices</a><a class="active" href="/users">Users</a><a href="/history">History</a><a href="/settings">Settings</a></nav>
+    <span>{{ username }} ({{ role }})</span>
+  </header>
+  <main class="container">
+    <h1>Users</h1>
+    {% if !message.is_empty() %}<div class="notice">{{ message }}</div>{% endif %}
+    <section class="panel">
+      <h2>Create User</h2>
+      <form method="post" action="/users" class="grid-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>Username<input name="username" required maxlength="64" autocomplete="username"></label>
+        <label>Password<input type="password" name="password" required minlength="12" autocomplete="new-password"></label>
+        <label>Role<select name="role"><option value="operator">operator</option><option value="admin">admin</option></select></label>
+        <div><button type="submit">Create User</button></div>
+      </form>
+    </section>
+    <section class="panel">
+      <h2>Reset Password</h2>
+      <form method="post" action="/users/reset" class="grid-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>Username<input name="username" required></label>
+        <label>New Password<input type="password" name="password" required minlength="12" autocomplete="new-password"></label>
+        <div><button class="secondary" type="submit">Reset Password</button></div>
+      </form>
+    </section>
+    <section class="panel">
+      <h2>Configured Users</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Username</th><th>Role</th><th>Enabled</th></tr></thead>
+        <tbody>{% for user in users %}
+          <tr><td>{{ user.username }}</td><td>{{ user.role }}</td><td>{% if user.enabled %}yes{% else %}no{% endif %}</td></tr>
+        {% endfor %}</tbody>
+      </table></div>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

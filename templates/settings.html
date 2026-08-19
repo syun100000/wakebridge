@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }} - Settings</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">WakeBridge</a>
+    <nav><a href="/">Dashboard</a><a href="/sites">Sites</a><a href="/devices">Devices</a><a href="/users">Users</a><a href="/history">History</a><a class="active" href="/settings">Settings</a></nav>
+    <span>{{ username }} ({{ role }})</span>
+  </header>
+  <main class="container">
+    <h1>Settings</h1>
+    {% if !message.is_empty() %}<div class="notice">{{ message }}</div>{% endif %}
+    <section class="panel">
+      <h2>Application</h2>
+      <form method="post" action="/settings" class="grid-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>Site Title<input name="site_title" value="{{ title }}" required maxlength="64"></label>
+        <label class="check"><input type="checkbox" name="cookie_secure" {% if cookie_secure %}checked{% endif %}> Secure Cookie (IIS HTTPSでは有効にしてください)</label>
+        <div><button type="submit">Save Settings</button></div>
+      </form>
+    </section>
+    <section class="panel">
+      <h2>Runtime</h2>
+      <p>Listen: <code>127.0.0.1:8787</code>（起動引数で変更可能）</p>
+      <p>Secrets: SQLiteには平文保存せず、DPAPI保護されたinstallation-specific master keyとAES-256-GCMで暗号化します。</p>
+      <p>SSH: Yamaha固定コマンドだけを実行し、任意SSHコマンドAPIは提供しません。</p>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
