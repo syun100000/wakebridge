@@ -14,6 +14,8 @@ macOSではinstaller/macos/build-installer.shがrelease binaryをpkgへ梱包す
 
 macOSのService操作は管理者権限で実行する。Finderから/Applications/WakeBridge/WakeBridge-Uninstaller.commandを実行できる。
 
+通常のmacOSアンインストールはlaunchd登録とプログラムだけを削除し、`/Library/Application Support/WakeBridge/`を保持する。データも削除する場合は、確認ダイアログで「削除」を選ぶか、管理者ターミナルから`sudo /Applications/WakeBridge/WakeBridge-Uninstaller.command --delete-data`を明示実行する。Service停止・登録解除に失敗した場合はデータ削除へ進まない。
+
 ## 標準配置
 
 - 運用バイナリ: `C:\Program Files\WakeBridge\wakebridge.exe`
@@ -45,6 +47,8 @@ cargo build --release
 
 生成物は`dist\WakeBridge-Setup-<version>-x64.exe`と`.sha256`である。セットアップにはDB、master key、SSH Credential、実機IP/MACを含めない。
 
+GitHubの`v*` tagをpushすると、ActionsがWindows x64のセットアップEXEとmacOSのpkg/DMGを生成し、SHA-256チェックサムとともに同じGitHub Releaseへ登録する。Releaseから取得した対象OS用インストーラーだけを配布先で使用する。
+
 ## 更新・修復
 
 同じセットアップEXEを実行すると、既存Serviceを停止・削除してバイナリを更新し、Serviceを再登録・起動する。次のデータは保持される。
@@ -70,6 +74,8 @@ cargo build --release
 ```
 
 `/DELETE_DATA`を指定しない無人アンインストールはデータを保持する。Service停止・削除に失敗した場合はデータを削除せず、残ったServiceを確認してから再実行する。
+
+アンインストーラーは開始時にService停止・削除と削除完了確認を行う。失敗した場合はプログラムと`C:\ProgramData\WakeBridge\`を削除せず、表示されたServiceエラーを解消してから再実行する。アンインストール画面を複数回同時に起動すると`unins000.dat`が使用中になるため、既に開いているWakeBridgeのアンインストール画面を閉じてから一度だけ実行する。
 
 ## 初回インストールとService登録
 
@@ -183,6 +189,8 @@ WakeBridgeはWindowsからUDP Broadcastを送信しない。認証済みSSHでRT
 
 管理者は「設定」でサイトタイトルとCookie設定を変更できる。IIS HTTPS構成ではSecure Cookieを有効にする。HTTPの`WAKEBRIDGE_DEV_INSECURE_COOKIE=1`は開発試験専用であり、本番で使用しない。
 
+画面のWakeBridgeロゴ横には、実行中バイナリのビルド版数（例: `v0.1.0`）が表示される。設定DBのサイトタイトルとは別の値である。
+
 ## IIS連携
 
 1. IIS URL RewriteとApplication Request Routingを導入する。
@@ -231,3 +239,7 @@ Service停止後、アクセス権を保ったまま`C:\ProgramData\WakeBridge`�
 - ビルド済みrelease binaryを梱包するWindowsセットアップEXEの生成手順を追加した。
 - 更新時のService再登録と、アンインストール時のデータ保持・明示削除の手順を追加した。
 - macOSの固定配置、launchd操作、pkg/DMG生成、専用サービスユーザー、データ保持型アンインストール手順を追加した。
+- macOSアンインストーラーのデータ保持・明示削除と、WindowsアンインストーラーのService先行停止・`unins000.dat`同時起動時の復旧手順を明記した。
+- UIのビルド版数表示を追加した。
+- 公開用UIプレースホルダーとProviderテストには実機MACを使わず、ダミーMACを使用するようにした。
+- `v*` tagからWindows/macOSインストーラーを生成し、GitHub Releaseへ登録するActions手順を追加した。

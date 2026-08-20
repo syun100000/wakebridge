@@ -2,7 +2,7 @@
 
 ## 目的
 
-WakeBridgeは、Windows Server上で複数拠点のWake-on-LANを管理するRustアプリケーションです。Windowsホスト自身からUDP Broadcastを送信せず、SSH経由でYamaha RTXへ固定された`wol send`コマンドを実行します。
+WakeBridgeは、Windows ServerまたはmacOS上で複数拠点のWake-on-LANを管理するRustアプリケーションです。ホスト自身からUDP Broadcastを送信せず、SSH経由でYamaha RTXへ固定された`wol send`コマンドを実行します。
 
 ## 技術構成
 
@@ -12,7 +12,7 @@ WakeBridgeは、Windows Server上で複数拠点のWake-on-LANを管理するRus
 - AES-256-GCMによるSSH Credential暗号化。WindowsはDPAPI、macOSは専用サービスユーザー所有・0600のmaster key保護ファイルを使用する。
 - tracingによるログ
 - サーバーサイドHTML + Vanilla JavaScript
-- Windows Serviceは`windows-service`でSCMへ接続
+- Windows Serviceは`windows-service`でSCMへ接続し、macOSはlaunchdへ接続
 
 ## ディレクトリ構成
 
@@ -29,6 +29,7 @@ WakeBridgeは、Windows Server上で複数拠点のWake-on-LANを管理するRus
 | `src/static/` | CSS、Vanilla JavaScript |
 | `deploy/iis/` | IIS URL Rewrite / ARR設定例 |
 | `installer/` | Windows Inno SetupとmacOS pkgbuild/productbuildの生成スクリプト |
+| `.github/workflows/release.yml` | tag push時のWindows/macOS検証、インストーラー生成、GitHub Release登録 |
 | `docs/` | 開発・操作ドキュメント |
 
 ## 開発環境
@@ -75,13 +76,15 @@ $env:WAKEBRIDGE_DEV_INSECURE_COOKIE = '1'
 
 `service start`と`service stop`は既に目的状態なら成功として扱い、状態遷移を最大30秒待つ。`service uninstall`は停止完了を待ってからServiceを削除し、削除完了を確認する。データディレクトリは削除しない。
 
+Web画面には`CARGO_PKG_VERSION`から取得した版数をログイン画面・認証後の共通ヘッダーへ表示する。表示値は設定DBではなくビルド時の固定値である。
+
 Web処理は`AppConfig`のデータ領域を使い、Windows固有のSCM操作は`src/service.rs`へ隔離する。
 
 ### Windowsインストーラー
 
 `installer/WakeBridge.iss`は、Rustを含まない配布用セットアップEXEを生成する。`installer/build-installer.ps1`は既に生成済みの`target/release/wakebridge.exe`を一時payloadへコピーしてInno Setupへ渡し、完了後にpayloadを削除する。出力は`dist/WakeBridge-Setup-<version>-x64.exe`とSHA-256チェックサムで、payload、DB、master key、実機CredentialはGitへ含めない。
 
-セットアップは固定パスを使う。インストール前に既存の`WakeBridge` Serviceを停止・削除し、バイナリ更新後にServiceを再登録・起動する。`C:\ProgramData\WakeBridge\`は更新・修復・通常アンインストールで保持する。アンインストーラーの明示選択または`/DELETE_DATA`指定時だけ、Service停止後にデータディレクトリを削除する。
+セットアップは固定パスを使う。インストール前に既存の`WakeBridge` Serviceを停止・削除し、バイナリ更新後にServiceを再登録・起動する。`C:\ProgramData\WakeBridge\`は更新・修復・通常アンインストールで保持する。アンインストーラーは初期化時にService停止・削除・完了確認を行い、失敗時はプログラムやデータの削除へ進まない。明示選択または`/DELETE_DATA`指定時だけ、Service停止後にデータディレクトリを削除する。
 
 ## 検証コマンド
 
@@ -105,8 +108,10 @@ cargo build --release
 - Usersの管理者リセット
 - Service status APIとGraceful Shutdown
 - インストーラーのコンパイル、SHA-256生成、固定配置、Service登録・更新・起動
+- GitHub Actionsのtag releaseでWindows x64 EXEとmacOS pkg/DMGを生成し、SHA-256とともにReleaseへ登録すること
 - アンインストールでデータ保持を選んだ場合の`C:\ProgramData\WakeBridge\`保持
 - `/DELETE_DATA`を指定した場合だけのデータディレクトリ削除
+- UI各画面とログイン画面にCargo package版数が表示されること
 - 実機検証時はRouter Host、経路、LAN Interface、SSH Host Keyを推測しない
 
 ## SQLite・秘密情報
@@ -136,3 +141,8 @@ SQLite migrationは`src/db.rs`の起動処理で適用する。実データは`C
 - アンインストール時のデータ保持・明示削除を設計し、秘密情報をインストーラーへ含めないことを検証対象に追加した。
 - macOS向けにlaunchdサービス、_wakebridge専用ユーザー、Apple標準pkg/DMG生成スクリプト、データ保持型アンインストーラーを追加した。
 - macOSのmaster keyは/Library/Application Support/WakeBridge/master.keyに0600で保存し、サービスユーザー以外から読めないようにした。
+- macOS対応をGitHubからpullし、Unix専用のmaster key権限指定がWindowsビルドへ混入しないよう条件付きコンパイルを修正した。
+- ログイン画面と認証後の全画面に`v0.1.0`形式のビルド版数を表示するようにした。
+- Windowsアンインストーラーの初期化時にService停止・削除を先に実行し、失敗時にデータ削除へ進まないようにした。
+- 公開前監査としてProviderテストとUIプレースホルダーのMACアドレスをRFC 5737相当のダミー値へ置き換え、実機MACを含めないようにした。
+- GitHub ActionsでWindows/macOSの検証と配布用インストーラー生成を行い、`v*` tagのGitHub Releaseへ成果物を登録するworkflowを追加した。

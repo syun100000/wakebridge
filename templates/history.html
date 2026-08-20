@@ -8,7 +8,7 @@
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/">WakeBridge</a>
+    <a class="brand" href="/">WakeBridge <span class="app-version">v{{ version }}</span></a>
     <nav><a href="/">ダッシュボード</a>{% if role == "admin" %}<a href="/sites">拠点</a>{% endif %}<a href="/devices">デバイス</a>{% if role == "admin" %}<a href="/users">ユーザー</a>{% endif %}<a class="active" href="/history">履歴</a>{% if role == "admin" %}<a href="/settings">設定</a>{% endif %}<a href="/account/password">パスワード変更</a></nav>
     <span>{{ username }}（{% if role == "admin" %}管理者{% else %}オペレーター{% endif %}）</span>
   </header>

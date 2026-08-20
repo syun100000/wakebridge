@@ -7,6 +7,7 @@ pub const SERVICE_NAME: &str = "WakeBridge";
 #[cfg(windows)]
 pub const DISPLAY_NAME: &str = "WakeBridge";
 pub const DEFAULT_LISTEN: &str = "127.0.0.1:8787";
+pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Clone, Debug)]
 pub struct AppConfig {

@@ -1,6 +1,6 @@
 # WakeBridge
 
-WakeBridge is a Windows-native Rust service for managing Wake-on-LAN across multiple sites. It sends a fixed Yamaha RTX wol send command over SSH; WakeBridge never broadcasts UDP directly from the Windows host and exposes no arbitrary SSH command API.
+WakeBridge is a native Windows/macOS Rust service for managing Wake-on-LAN across multiple sites. It sends a fixed Yamaha RTX wol send command over SSH; WakeBridge never broadcasts UDP directly from the host and exposes no arbitrary SSH command API.
 
 ## Features
 
@@ -9,9 +9,12 @@ WakeBridge is a Windows-native Rust service for managing Wake-on-LAN across mult
 - Yamaha RTX provider behind a provider trait
 - SSH host-key fingerprint trust on first connection and strict mismatch rejection afterwards
 - SSH credentials encrypted with AES-256-GCM under a machine-protected, installation-specific DPAPI master key
+- On macOS, the installation-specific master key is a 0600 file owned by the dedicated service user
 - Argon2id passwords, in-memory sessions, HttpOnly/SameSite cookies, CSRF tokens, and login throttling
 - Windows Service commands with LocalService and automatic start
+- macOS launchd service with a dedicated service user
 - IIS reverse-proxy configuration for 127.0.0.1:8787
+- Build version displayed in the web UI
 
 See the [development documentation](docs/DEVELOPMENT.ja.md) and [operations documentation](docs/OPERATIONS.ja.md) for the complete procedures. The Japanese README is the default repository landing page; this file contains the English overview.
 
@@ -52,6 +55,33 @@ The uninstaller asks whether to delete application data. Choosing No removes onl
 ~~~
 
 Data deletion includes SQLite, users, password hashes, credentials, and the master key and cannot be undone. Normal upgrade and repair never delete the data directory.
+
+## macOS installer
+
+On macOS, build the release binary and package it with Apple's `pkgbuild`, `productbuild`, and `hdiutil` tools:
+
+```bash
+rustup target add $(rustc -vV | awk '/host:/ {print $2}')
+cargo build --release
+chmod +x installer/macos/build-installer.sh
+installer/macos/build-installer.sh
+```
+
+The output is `dist/WakeBridge-Setup-<version>-macos-<arch>.pkg`, a DMG, and SHA-256 checksums. Rust, Node.js, React, and Docker are not required on the target Mac.
+
+- binary: `/usr/local/libexec/WakeBridge/wakebridge`
+- data, SQLite, and master key: `/Library/Application Support/WakeBridge/`
+- logs: `/Library/Logs/WakeBridge/`
+- launchd plist: `/Library/LaunchDaemons/com.wakebridge.service.plist`
+- service user: `_wakebridge`
+
+Installation registers and starts launchd automatically. Run `/Applications/WakeBridge/WakeBridge-Uninstaller.command` to uninstall; data is preserved by default. To explicitly delete data:
+
+```bash
+sudo /Applications/WakeBridge/WakeBridge-Uninstaller.command --delete-data
+```
+
+Build and test the macOS pkg and launchd behavior on a real Mac. Windows cannot perform the macOS runtime verification.
 
 ## First run
 

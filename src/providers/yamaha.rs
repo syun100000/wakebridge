@@ -357,7 +357,7 @@ mod tests {
     #[test]
     fn normalizes_and_rejects_mac_addresses() {
         assert_eq!(
-            normalize_mac("4c-cc-6a-b3-69-3e").expect("valid MAC"),
+            normalize_mac("02-00-00-00-00-10").expect("valid MAC"),
             "02:00:00:00:00:10"
         );
         assert!(normalize_mac("01:00:00:00:00:01").is_err());

@@ -54,12 +54,14 @@ impl SecretStore {
             let mut key = [0_u8; 32];
             OsRng.fill_bytes(&mut key);
             let protected = platform_protect(&key).context("protect master key")?;
+            let mut options = OpenOptions::new();
+            options.write(true).create_new(true);
             #[cfg(unix)]
-            use std::os::unix::fs::OpenOptionsExt;
-            let mut file = OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .mode(0o600)
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            let mut file = options
                 .open(&path)
                 .with_context(|| format!("create protected master key {}", path.display()))?;
             file.write_all(&protected)

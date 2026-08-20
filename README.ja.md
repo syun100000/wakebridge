@@ -1,6 +1,6 @@
 # WakeBridge
 
-WakeBridgeは、複数拠点のWake-on-LANを管理するWindowsネイティブRustサービスです。Windowsホスト自身からUDP Broadcastは送信せず、SSH経由でYamaha RTXの固定コマンド wol send を実行します。任意SSHコマンドAPIはありません。
+WakeBridgeは、複数拠点のWake-on-LANを管理するWindows/macOSネイティブRustサービスです。Windows/macOSホスト自身からUDP Broadcastは送信せず、SSH経由でYamaha RTXの固定コマンド wol send を実行します。任意SSHコマンドAPIはありません。
 
 ## 主な機能
 
@@ -8,10 +8,11 @@ WakeBridgeは、複数拠点のWake-on-LANを管理するWindowsネイティブR
 - Sites / Devices / Users / Settings / Wake History / Audit Log
 - 将来の拡張を考慮したYamaha RTX Provider trait
 - 初回SSH Host Key Fingerprint表示・管理者Trust・以後の変更拒否
-- SSH CredentialはSQLite平文保存せず、AES-256-GCM＋Windows DPAPI保護master keyで暗号化
+- SSH CredentialはSQLite平文保存せず、AES-256-GCM＋Windows DPAPIまたはmacOS専用サービスユーザー所有の0600 master keyで暗号化
 - Argon2idパスワード、HttpOnly/SameSite Cookie、CSRF対策、ログインレート制限
-- LocalServiceで自動起動するWindows Service
+- LocalServiceで自動起動するWindows Service、専用ユーザーで自動起動するmacOS launchd
 - IIS HTTPS終端から127.0.0.1:8787へReverse Proxy
+- UIにビルド版数を表示
 
 開発手順は[開発ドキュメント](docs/DEVELOPMENT.ja.md)、管理者・利用者向けの操作手順は[操作ドキュメント](docs/OPERATIONS.ja.md)を参照してください。
 
@@ -52,6 +53,33 @@ cargo build --release
 ~~~
 
 データ削除にはSQLite、ユーザー、パスワードハッシュ、Credential、master keyが含まれ、元に戻せません。通常の更新・修復ではデータ削除は行いません。
+
+## macOSインストーラー
+
+macOS上でrelease binaryを作成し、Apple標準の`pkgbuild`と`productbuild`でpkg、`hdiutil`でDMGを生成します。
+
+```bash
+rustup target add $(rustc -vV | awk '/host:/ {print $2}')
+cargo build --release
+chmod +x installer/macos/build-installer.sh
+installer/macos/build-installer.sh
+```
+
+生成物は`dist/WakeBridge-Setup-<version>-macos-<arch>.pkg`、DMGおよびSHA-256チェックサムです。配布先にRust、Node.js、React、Dockerは不要です。
+
+- Binary: `/usr/local/libexec/WakeBridge/wakebridge`
+- Data・SQLite・master key: `/Library/Application Support/WakeBridge/`
+- Logs: `/Library/Logs/WakeBridge/`
+- launchd: `/Library/LaunchDaemons/com.wakebridge.service.plist`
+- Service user: `_wakebridge`
+
+インストール時にlaunchdへ登録・自動起動します。アンインストールは`/Applications/WakeBridge/WakeBridge-Uninstaller.command`から実行し、標準ではデータを保持します。データも削除する場合だけ次を明示します。
+
+```bash
+sudo /Applications/WakeBridge/WakeBridge-Uninstaller.command --delete-data
+```
+
+macOSのpkg/launchdはmacOS実機でビルド・検証してください。Windows環境ではmacOS成果物の実機テストは行いません。
 
 ## 初回起動
 

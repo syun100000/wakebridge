@@ -71,9 +71,6 @@ Name: "{autoprograms}\{#MyAppName}\ローカル操作画面"; Filename: "{sys}\r
 Filename: "{app}\{#MyAppExeName}"; Parameters: "service install"; StatusMsg: "WakeBridge Serviceを登録しています..."; Flags: runhidden waituntilterminated
 Filename: "{app}\{#MyAppExeName}"; Parameters: "service start"; StatusMsg: "WakeBridge Serviceを起動しています..."; Flags: runhidden waituntilterminated
 
-[UninstallRun]
-Filename: "{app}\{#MyAppExeName}"; Parameters: "service uninstall"; StatusMsg: "WakeBridge Serviceを停止・削除しています..."; Flags: runhidden waituntilterminated; RunOnceId: "WakeBridgeServiceUninstall"; Check: WakeBridgeExecutableExists
-
 [UninstallDelete]
 Type: filesandordirs; Name: "{commonappdata}\WakeBridge"; Check: ShouldDeleteData
 
@@ -133,6 +130,42 @@ begin
     if ResultCode <> 0 then
       Exit;
     Sleep(250);
+  end;
+end;
+
+function UninstallWakeBridgeService(): Boolean;
+begin
+  Result := True;
+  if not ServiceExists() then
+    Exit;
+
+  if not WakeBridgeExecutableExists() then
+  begin
+    MsgBox(
+      'WakeBridge Serviceは登録されていますが、運用バイナリが見つかりません。'#13#10#13#10 +
+      'Serviceを手動で確認してからアンインストールを再実行してください。',
+      mbError, MB_OK);
+    Result := False;
+    Exit;
+  end;
+
+  if not RunWakeBridge('service uninstall') then
+  begin
+    MsgBox(
+      'WakeBridge Serviceを停止・削除できませんでした。'#13#10#13#10 +
+      'Serviceが使用中でないことと、管理者権限で実行していることを確認してから再実行してください。',
+      mbError, MB_OK);
+    Result := False;
+    Exit;
+  end;
+
+  if not WaitForServiceAbsent() then
+  begin
+    MsgBox(
+      'WakeBridge Serviceの削除完了を確認できませんでした。'#13#10#13#10 +
+      'データは削除せず、Serviceの状態を確認してから再実行してください。',
+      mbError, MB_OK);
+    Result := False;
   end;
 end;
 
@@ -196,7 +229,8 @@ begin
         mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = idYes;
     end;
   end;
-  Result := True;
+  { Service cleanup must finish before Inno removes the application files. }
+  Result := UninstallWakeBridgeService();
 end;
 
 function ShouldDeleteData(): Boolean;

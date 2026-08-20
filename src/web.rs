@@ -1,5 +1,6 @@
 use crate::app::AppState;
 use crate::auth::{hash_password, verify_password, Role, Session};
+use crate::config::APP_VERSION;
 use crate::db::{AuditEventRecord, DeviceRecord, SiteRecord, UserRecord, WakeEventRecord};
 use crate::providers::{normalize_ip, normalize_mac, validate_fingerprint};
 use anyhow::{Context, Result};
@@ -84,12 +85,14 @@ pub struct AuditView {
 #[template(path = "login.html")]
 struct LoginTemplate {
     error: String,
+    version: &'static str,
 }
 
 #[derive(Template)]
 #[template(path = "dashboard.html")]
 struct DashboardTemplate {
     title: String,
+    version: &'static str,
     username: String,
     role: String,
     csrf: String,
@@ -104,6 +107,7 @@ struct DashboardTemplate {
 #[template(path = "sites.html")]
 struct SitesTemplate {
     title: String,
+    version: &'static str,
     username: String,
     role: String,
     csrf: String,
@@ -116,6 +120,7 @@ struct SitesTemplate {
 #[template(path = "devices.html")]
 struct DevicesTemplate {
     title: String,
+    version: &'static str,
     username: String,
     role: String,
     csrf: String,
@@ -128,6 +133,7 @@ struct DevicesTemplate {
 #[template(path = "users.html")]
 struct UsersTemplate {
     title: String,
+    version: &'static str,
     username: String,
     role: String,
     csrf: String,
@@ -139,6 +145,7 @@ struct UsersTemplate {
 #[template(path = "history.html")]
 struct HistoryTemplate {
     title: String,
+    version: &'static str,
     username: String,
     role: String,
     wake_events: Vec<WakeView>,
@@ -149,6 +156,7 @@ struct HistoryTemplate {
 #[template(path = "settings.html")]
 struct SettingsTemplate {
     title: String,
+    version: &'static str,
     username: String,
     role: String,
     csrf: String,
@@ -160,6 +168,7 @@ struct SettingsTemplate {
 #[template(path = "account_password.html")]
 struct AccountPasswordTemplate {
     title: String,
+    version: &'static str,
     username: String,
     role: String,
     csrf: String,
@@ -304,6 +313,7 @@ pub async fn serve_foreground(
 async fn login_page() -> Response {
     render(LoginTemplate {
         error: String::new(),
+        version: APP_VERSION,
     })
 }
 
@@ -315,6 +325,7 @@ async fn login_submit(
     if !state.auth.login_allowed("local-proxy").await {
         return render(LoginTemplate {
             error: "ログイン試行回数が上限に達しました。15分後に再試行してください。".to_owned(),
+            version: APP_VERSION,
         });
     }
     let user = state.db.find_user(form.username.trim()).await;
@@ -330,6 +341,7 @@ async fn login_submit(
             .await;
         return render(LoginTemplate {
             error: "ユーザー名またはパスワードが正しくありません。".to_owned(),
+            version: APP_VERSION,
         });
     }
     let user = state
@@ -341,6 +353,7 @@ async fn login_submit(
     let Some(user) = user else {
         return render(LoginTemplate {
             error: "ログイン処理に失敗しました。".to_owned(),
+            version: APP_VERSION,
         });
     };
     let (token, _) = match state.auth.create_session(&user).await {
@@ -476,6 +489,7 @@ async fn dashboard(State(state): State<AppState>, jar: CookieJar) -> Response {
         .unwrap_or_else(|| "WakeBridge".to_owned());
     render(DashboardTemplate {
         title,
+        version: APP_VERSION,
         username: session.username,
         role: session.role.as_str().to_owned(),
         csrf: session.csrf_token,
@@ -1192,6 +1206,7 @@ async fn history_page(State(state): State<AppState>, jar: CookieJar) -> Response
     let title = page_title(&state).await;
     render(HistoryTemplate {
         title,
+        version: APP_VERSION,
         username: session.username,
         role: session.role.as_str().to_owned(),
         wake_events,
@@ -1213,6 +1228,7 @@ async fn settings_page(
     let cookie_secure = state.cookie_secure().await;
     render(SettingsTemplate {
         title: page_title(&state).await,
+        version: APP_VERSION,
         username: session.username,
         role: session.role.as_str().to_owned(),
         csrf: session.csrf_token,
@@ -1240,6 +1256,7 @@ async fn settings_save(
         Err(message) => {
             return render(SettingsTemplate {
                 title: page_title(&state).await,
+                version: APP_VERSION,
                 username: session.username,
                 role: session.role.as_str().to_owned(),
                 csrf: session.csrf_token,
@@ -1440,6 +1457,7 @@ async fn render_sites(
     }
     render(SitesTemplate {
         title: page_title(state).await,
+        version: APP_VERSION,
         username: session.username.clone(),
         role: session.role.as_str().to_owned(),
         csrf: session.csrf_token.clone(),
@@ -1467,6 +1485,7 @@ async fn render_devices(state: &AppState, session: &Session, message: String) ->
     };
     render(DevicesTemplate {
         title: page_title(state).await,
+        version: APP_VERSION,
         username: session.username.clone(),
         role: session.role.as_str().to_owned(),
         csrf: session.csrf_token.clone(),
@@ -1483,6 +1502,7 @@ async fn render_users(state: &AppState, session: &Session, message: String) -> R
     };
     render(UsersTemplate {
         title: page_title(state).await,
+        version: APP_VERSION,
         username: session.username.clone(),
         role: session.role.as_str().to_owned(),
         csrf: session.csrf_token.clone(),
@@ -1494,6 +1514,7 @@ async fn render_users(state: &AppState, session: &Session, message: String) -> R
 async fn render_account_password(state: &AppState, session: &Session, message: String) -> Response {
     render(AccountPasswordTemplate {
         title: page_title(state).await,
+        version: APP_VERSION,
         username: session.username.clone(),
         role: session.role.as_str().to_owned(),
         csrf: session.csrf_token.clone(),
