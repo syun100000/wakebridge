@@ -30,6 +30,29 @@ cargo build --release
 
 生成物は`target\release\wakebridge.exe`です。Service登録後の運用バイナリは`C:\Program Files\WakeBridge\wakebridge.exe`を使用します。
 
+## Windowsインストーラー
+
+配布先ではRustや開発ツールをインストールせず、ビルド済み実行ファイルを梱包したセットアップEXEを実行します。開発側でrelease build後、Inno Setupのコンパイラを使って生成します。
+
+~~~powershell
+cargo build --release
+.\installer\build-installer.ps1
+~~~
+
+生成物は`dist\WakeBridge-Setup-<version>-x64.exe`とSHA-256チェックサムです。`build-installer.ps1`は`target\release\wakebridge.exe`を入力として使い、DB、Credential、master keyを梱包しません。Inno Setupはビルド環境だけに必要です。
+
+セットアップはUAC管理者権限で、`C:\Program Files\WakeBridge\`へバイナリを配置し、`WakeBridge` ServiceをLocalService・Automaticで登録して起動します。IIS、Firewall、RTX設定は変更しません。新規環境ではセットアップ後に初期adminをCLIで作成してください。
+
+既存環境の更新ではServiceを停止してバイナリを置き換えます。`C:\ProgramData\WakeBridge\`は保持されるため、ユーザー、パスワード、設定、Credential、master keyは維持されます。
+
+アンインストール時はデータを削除するか確認します。「いいえ」ならServiceとプログラムだけを削除します。「はい」または次の明示指定時だけデータも削除します。
+
+~~~powershell
+& 'C:\Program Files\WakeBridge\unins000.exe' /DELETE_DATA
+~~~
+
+データ削除にはSQLite、ユーザー、パスワードハッシュ、Credential、master keyが含まれ、元に戻せません。通常の更新・修復ではデータ削除は行いません。
+
 ## 配置と初回設定
 
 通常の配置先は次のとおりです。

@@ -30,6 +30,29 @@ cargo build --release
 
 The build output is `target\release\wakebridge.exe`. After service installation, use the deployed binary at `C:\Program Files\WakeBridge\wakebridge.exe`.
 
+## Windows installer
+
+Distribution uses a normal setup EXE containing the already-built release binary. Rust, Node.js, Docker, and Inno Setup are not required on the target server. On the build machine:
+
+~~~powershell
+cargo build --release
+.\installer\build-installer.ps1
+~~~
+
+The output is `dist\WakeBridge-Setup-<version>-x64.exe` plus a SHA-256 checksum. The packaging script consumes `target\release\wakebridge.exe` and never packages a database, credential, or master key. Inno Setup is required only on the build machine.
+
+The setup requests administrator approval, installs the binary under `C:\Program Files\WakeBridge\`, registers `WakeBridge` as an Automatic LocalService, and starts it. It does not change IIS, firewall rules, or RTX configuration. A fresh data directory still requires creating the initial admin with the CLI.
+
+Upgrades stop the service and replace the binary while preserving `C:\ProgramData\WakeBridge\`; users, password hashes, settings, credentials, and the master key remain unchanged.
+
+The uninstaller asks whether to delete application data. Choosing No removes only the service and program files. Choosing Yes, or explicitly passing the following switch, also removes the data directory:
+
+~~~powershell
+& 'C:\Program Files\WakeBridge\unins000.exe' /DELETE_DATA
+~~~
+
+Data deletion includes SQLite, users, password hashes, credentials, and the master key and cannot be undone. Normal upgrade and repair never delete the data directory.
+
 ## First run
 
 The default runtime is:

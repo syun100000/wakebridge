@@ -1,4 +1,8 @@
 /target/
+/dist/
+/installer/payload/
+/.tools/
+/.tools-test/
 /data/
 *.db
 *.db-shm

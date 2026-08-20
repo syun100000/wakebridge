@@ -28,6 +28,7 @@ WakeBridgeは、Windows Server上で複数拠点のWake-on-LANを管理するRus
 | `templates/` | Askama HTMLテンプレート（UIは日本語） |
 | `src/static/` | CSS、Vanilla JavaScript |
 | `deploy/iis/` | IIS URL Rewrite / ARR設定例 |
+| `installer/` | ビルド済みrelease binaryを梱包するInno Setup定義と生成スクリプト |
 | `docs/` | 開発・操作ドキュメント |
 
 ## 開発環境
@@ -66,13 +67,21 @@ $env:WAKEBRIDGE_DEV_INSECURE_COOKIE = '1'
 
 ### Serviceとパス
 
-`service install`は実行中のバイナリを次へコピーしてService登録する。
+`service install`は実行中のバイナリを次へコピーしてService登録する。既存Serviceがある場合は構成を更新するため、更新インストールと手動再登録を冪等に扱える。
 
 - Binary: `C:\Program Files\WakeBridge\wakebridge.exe`
 - Data: `C:\ProgramData\WakeBridge\`
 - Service: `WakeBridge`、Automatic、`NT AUTHORITY\LocalService`
 
+`service start`と`service stop`は既に目的状態なら成功として扱い、状態遷移を最大30秒待つ。`service uninstall`は停止完了を待ってからServiceを削除し、削除完了を確認する。データディレクトリは削除しない。
+
 Web処理は`AppConfig`のデータ領域を使い、Windows固有のSCM操作は`src/service.rs`へ隔離する。
+
+### Windowsインストーラー
+
+`installer/WakeBridge.iss`は、Rustを含まない配布用セットアップEXEを生成する。`installer/build-installer.ps1`は既に生成済みの`target/release/wakebridge.exe`を一時payloadへコピーしてInno Setupへ渡し、完了後にpayloadを削除する。出力は`dist/WakeBridge-Setup-<version>-x64.exe`とSHA-256チェックサムで、payload、DB、master key、実機CredentialはGitへ含めない。
+
+セットアップは固定パスを使う。インストール前に既存の`WakeBridge` Serviceを停止・削除し、バイナリ更新後にServiceを再登録・起動する。`C:\ProgramData\WakeBridge\`は更新・修復・通常アンインストールで保持する。アンインストーラーの明示選択または`/DELETE_DATA`指定時だけ、Service停止後にデータディレクトリを削除する。
 
 ## 検証コマンド
 
@@ -83,6 +92,7 @@ cargo fmt --all -- --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-targets
 cargo build --release
+.\installer\build-installer.ps1
 ```
 
 最低限確認する項目:
@@ -94,6 +104,9 @@ cargo build --release
 - Device登録・WOL履歴
 - Usersの管理者リセット
 - Service status APIとGraceful Shutdown
+- インストーラーのコンパイル、SHA-256生成、固定配置、Service登録・更新・起動
+- アンインストールでデータ保持を選んだ場合の`C:\ProgramData\WakeBridge\`保持
+- `/DELETE_DATA`を指定した場合だけのデータディレクトリ削除
 - 実機検証時はRouter Host、経路、LAN Interface、SSH Host Keyを推測しない
 
 ## SQLite・秘密情報
@@ -115,3 +128,9 @@ SQLite migrationは`src/db.rs`の起動処理で適用する。実データは`C
 - パスワード変更をCSRF保護し、Argon2idでハッシュ化し、監査イベントへ記録するようにした。
 - `AGENTS.md`、開発ドキュメント、操作ドキュメントを追加した。
 - `cargo fmt --all -- --check`、`cargo clippy --all-targets --all-features -- -D warnings`、`cargo test --all-targets`、`cargo build --release`に成功した。
+
+## 2026-08-20 変更記録
+
+- ビルド済みrelease binaryを梱包するInno Setup定義と`installer/build-installer.ps1`を追加した。
+- Serviceのinstall/start/stop/uninstallを冪等化し、更新・削除時に状態遷移の完了を待つようにした。
+- アンインストール時のデータ保持・明示削除を設計し、秘密情報をインストーラーへ含めないことを検証対象に追加した。

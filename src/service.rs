@@ -12,7 +12,7 @@ mod windows_impl {
     use std::ffi::OsString;
     use std::fs;
     use std::sync::mpsc;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
     use windows_service::{
         define_windows_service,
         service::{
@@ -122,13 +122,31 @@ mod windows_impl {
             account_name: Some(OsString::from(r"NT AUTHORITY\LocalService")),
             account_password: None,
         };
-        let service = manager
-            .create_service(&info, ServiceAccess::CHANGE_CONFIG | ServiceAccess::START)
-            .context("create WakeBridge Windows Service")?;
-        service
-            .set_description("Multi-site Wake-on-LAN management service")
-            .context("set WakeBridge service description")?;
-        println!("Installed {SERVICE_NAME} as Automatic / LocalService");
+        let service_access = ServiceAccess::CHANGE_CONFIG | ServiceAccess::START;
+        match manager.open_service(SERVICE_NAME, service_access) {
+            Ok(service) => {
+                service
+                    .change_config(&info)
+                    .context("update WakeBridge Windows Service configuration")?;
+                service
+                    .set_description("Multi-site Wake-on-LAN management service")
+                    .context("set WakeBridge service description")?;
+                println!("Updated {SERVICE_NAME} as Automatic / LocalService");
+            }
+            Err(error) if service_not_found(&error) => {
+                let service = manager
+                    .create_service(&info, service_access)
+                    .context("create WakeBridge Windows Service")?;
+                service
+                    .set_description("Multi-site Wake-on-LAN management service")
+                    .context("set WakeBridge service description")?;
+                println!("Installed {SERVICE_NAME} as Automatic / LocalService");
+            }
+            Err(error) => {
+                return Err(anyhow::Error::new(error))
+                    .context("open WakeBridge Windows Service for update");
+            }
+        }
         println!("Binary: {}", target_exe.display());
         println!("Data: {}", data_dir.display());
         Ok(())
@@ -137,32 +155,72 @@ mod windows_impl {
     pub fn uninstall() -> Result<()> {
         let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)
             .context("connect to Windows SCM")?;
-        let service = manager
-            .open_service(
-                SERVICE_NAME,
-                ServiceAccess::QUERY_STATUS | ServiceAccess::STOP | ServiceAccess::DELETE,
-            )
-            .context("open WakeBridge service")?;
-        let _ = service.stop();
+        let service = match manager.open_service(
+            SERVICE_NAME,
+            ServiceAccess::QUERY_STATUS | ServiceAccess::STOP | ServiceAccess::DELETE,
+        ) {
+            Ok(service) => service,
+            Err(error) if service_not_found(&error) => {
+                println!("{SERVICE_NAME} is not registered; data directory was preserved.");
+                return Ok(());
+            }
+            Err(error) => {
+                return Err(anyhow::Error::new(error)).context("open WakeBridge service");
+            }
+        };
+        let status = service
+            .query_status()
+            .context("query WakeBridge service status")?;
+        if status.current_state != ServiceState::Stopped {
+            if status.current_state != ServiceState::StopPending {
+                service.stop().context("stop WakeBridge service")?;
+            }
+            wait_for_state(&service, ServiceState::Stopped)?;
+        }
         service.delete().context("delete WakeBridge service")?;
+        drop(service);
+        wait_for_service_absent(&manager)?;
         println!("Uninstalled {SERVICE_NAME}; data directory was preserved.");
         Ok(())
     }
 
     pub fn start() -> Result<()> {
         let service = open_service(ServiceAccess::START | ServiceAccess::QUERY_STATUS)?;
-        let arguments: [OsString; 0] = [];
-        service
-            .start(&arguments)
-            .context("start WakeBridge service")?;
+        let status = service
+            .query_status()
+            .context("query WakeBridge service status")?;
+        if status.current_state == ServiceState::Running {
+            println!("{SERVICE_NAME} is already running");
+            return Ok(());
+        }
+        if status.current_state == ServiceState::StopPending {
+            wait_for_state(&service, ServiceState::Stopped)?;
+        }
+        if status.current_state != ServiceState::StartPending {
+            let arguments: [OsString; 0] = [];
+            service
+                .start(&arguments)
+                .context("start WakeBridge service")?;
+        }
+        wait_for_state(&service, ServiceState::Running)?;
         println!("Started {SERVICE_NAME}");
         Ok(())
     }
 
     pub fn stop() -> Result<()> {
         let service = open_service(ServiceAccess::STOP | ServiceAccess::QUERY_STATUS)?;
-        let _ = service.stop().context("stop WakeBridge service")?;
-        println!("Stop requested for {SERVICE_NAME}");
+        let status = service
+            .query_status()
+            .context("query WakeBridge service status")?;
+        if status.current_state == ServiceState::Stopped {
+            println!("{SERVICE_NAME} is already stopped");
+            return Ok(());
+        }
+        if status.current_state != ServiceState::StopPending {
+            service.stop().context("stop WakeBridge service")?;
+        }
+        wait_for_state(&service, ServiceState::Stopped)?;
+        println!("Stopped {SERVICE_NAME}");
         Ok(())
     }
 
@@ -179,6 +237,54 @@ mod windows_impl {
         manager
             .open_service(SERVICE_NAME, access)
             .context("open WakeBridge service")
+    }
+
+    fn service_not_found(error: &windows_service::Error) -> bool {
+        matches!(
+            error,
+            windows_service::Error::Winapi(io_error)
+                if io_error.raw_os_error() == Some(1060)
+        )
+    }
+
+    fn wait_for_state(
+        service: &windows_service::service::Service,
+        expected: ServiceState,
+    ) -> Result<()> {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            let status = service
+                .query_status()
+                .context("query WakeBridge service status")?;
+            if status.current_state == expected {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                bail!(
+                    "WakeBridge service did not reach {:?}; current state is {:?}",
+                    expected,
+                    status.current_state
+                );
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+    }
+
+    fn wait_for_service_absent(manager: &ServiceManager) -> Result<()> {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            match manager.open_service(SERVICE_NAME, ServiceAccess::QUERY_STATUS) {
+                Err(error) if service_not_found(&error) => return Ok(()),
+                Ok(_) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(250));
+                }
+                Ok(_) => bail!("WakeBridge service is still registered after uninstall"),
+                Err(error) => {
+                    return Err(anyhow::Error::new(error))
+                        .context("verify WakeBridge service removal");
+                }
+            }
+        }
     }
 
     fn grant_data_directory(path: &PathBuf) -> Result<()> {

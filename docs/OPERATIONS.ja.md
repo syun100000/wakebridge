@@ -10,6 +10,53 @@
 
 IISを使う本番構成では、IISでHTTPSを終端し、ARRで`127.0.0.1:8787`へ転送する。WakeBridgeを直接インターネットへ公開しない。
 
+## Windowsインストーラーでの導入
+
+配布先では、開発環境やRustを用意せず、管理者権限で`WakeBridge-Setup-<version>-x64.exe`を実行する。セットアップは次を行う。
+
+- `C:\Program Files\WakeBridge\wakebridge.exe`へ運用バイナリを配置
+- `C:\ProgramData\WakeBridge\`を作成
+- `WakeBridge`を`NT AUTHORITY\LocalService`・Automaticで登録
+- Serviceを起動
+- Start Menuへ操作ドキュメントとローカル操作画面のショートカットを作成
+
+IIS、Windows Firewall、VPN、NAT、PPPoE、DHCP、RTX設定は変更しない。新規環境ではセットアップ後に「初回インストールとService登録」のadmin作成だけを行う。
+
+開発側のセットアップ生成は次のとおりである。`target\release\wakebridge.exe`を先に生成する。
+
+```powershell
+cargo build --release
+.\installer\build-installer.ps1
+```
+
+生成物は`dist\WakeBridge-Setup-<version>-x64.exe`と`.sha256`である。セットアップにはDB、master key、SSH Credential、実機IP/MACを含めない。
+
+## 更新・修復
+
+同じセットアップEXEを実行すると、既存Serviceを停止・削除してバイナリを更新し、Serviceを再登録・起動する。次のデータは保持される。
+
+- ユーザーとArgon2idパスワードハッシュ
+- Sites、Devices、Settings、Wake/Audit履歴
+- 暗号化SSH Credential
+- Windows DPAPIで保護されたmaster key
+
+そのため、通常の更新で以前のadminパスワードは維持される。更新中にServiceを停止できない場合はセットアップを中断し、Serviceを強制終了して続行しない。
+
+## アンインストールとデータ削除
+
+アプリと機能からWakeBridgeをアンインストールすると、最初にデータ削除の確認が表示される。
+
+- 「いいえ」: Serviceと`C:\Program Files\WakeBridge\`だけを削除し、`C:\ProgramData\WakeBridge\`を保持
+- 「はい」: Service停止・削除後、`C:\ProgramData\WakeBridge\`も削除
+
+データ削除はSQLite、ユーザー、パスワードハッシュ、Credential、master keyを含む不可逆操作である。無人アンインストールで削除する場合だけ、明示的に次を指定する。
+
+```powershell
+& 'C:\Program Files\WakeBridge\unins000.exe' /DELETE_DATA
+```
+
+`/DELETE_DATA`を指定しない無人アンインストールはデータを保持する。Service停止・削除に失敗した場合はデータを削除せず、残ったServiceを確認してから再実行する。
+
 ## 初回インストールとService登録
 
 Visual Studio Developer PowerShellでrelease build後、管理者PowerShellから実行する。
@@ -164,3 +211,8 @@ Service停止後、アクセス権を保ったまま`C:\ProgramData\WakeBridge`�
 - 画面上部メニューの「パスワード変更」から、ログイン中ユーザー自身がパスワードを変更できるようにした。
 - 管理者による他ユーザーのリセットと、配置済みバイナリを使うCLIリセット手順を明記した。
 - 日本語UIの拠点・デバイス・ユーザー・履歴・設定操作を追加・整理した。
+
+## 2026-08-20 変更記録
+
+- ビルド済みrelease binaryを梱包するWindowsセットアップEXEの生成手順を追加した。
+- 更新時のService再登録と、アンインストール時のデータ保持・明示削除の手順を追加した。
