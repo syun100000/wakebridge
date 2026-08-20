@@ -23,10 +23,26 @@ impl SecretStore {
     pub fn load_or_create(data_dir: &Path) -> Result<Self> {
         fs::create_dir_all(data_dir)
             .with_context(|| format!("create data directory {}", data_dir.display()))?;
-        let path = data_dir.join("master.key.dpapi");
+        let path = data_dir.join(if cfg!(target_os = "macos") {
+            "master.key"
+        } else {
+            "master.key.dpapi"
+        });
+        #[cfg(target_os = "macos")]
+        let path = {
+            let legacy = data_dir.join("master.key.dpapi");
+            if !path.exists() && legacy.exists() {
+                fs::rename(&legacy, &path)
+                    .with_context(|| format!("migrate legacy master key {}", legacy.display()))?;
+            }
+            path
+        };
         let key = if path.exists() {
             let protected = fs::read(&path)
                 .with_context(|| format!("read protected master key {}", path.display()))?;
+            #[cfg(target_os = "macos")]
+            fs::set_permissions(&path, std::os::unix::fs::PermissionsExt::from_mode(0o600))
+                .with_context(|| format!("protect master key permissions {}", path.display()))?;
             let raw = platform_unprotect(&protected).context("unprotect master key")?;
             if raw.len() != 32 {
                 bail!("protected master key has an unexpected length");
@@ -38,9 +54,12 @@ impl SecretStore {
             let mut key = [0_u8; 32];
             OsRng.fill_bytes(&mut key);
             let protected = platform_protect(&key).context("protect master key")?;
+            #[cfg(unix)]
+            use std::os::unix::fs::OpenOptionsExt;
             let mut file = OpenOptions::new()
                 .write(true)
                 .create_new(true)
+                .mode(0o600)
                 .open(&path)
                 .with_context(|| format!("create protected master key {}", path.display()))?;
             file.write_all(&protected)
@@ -153,12 +172,22 @@ fn platform_unprotect(data: &[u8]) -> Result<Vec<u8>> {
     Ok(plaintext)
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 fn platform_protect(data: &[u8]) -> Result<Vec<u8>> {
     Ok(data.to_vec())
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+fn platform_unprotect(data: &[u8]) -> Result<Vec<u8>> {
+    Ok(data.to_vec())
+}
+
+#[cfg(all(not(windows), not(target_os = "macos")))]
+fn platform_protect(data: &[u8]) -> Result<Vec<u8>> {
+    Ok(data.to_vec())
+}
+
+#[cfg(all(not(windows), not(target_os = "macos")))]
 fn platform_unprotect(data: &[u8]) -> Result<Vec<u8>> {
     Ok(data.to_vec())
 }

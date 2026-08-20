@@ -1,5 +1,19 @@
 # WakeBridge 操作ドキュメント
 
+## macOS
+
+- バイナリ: /usr/local/libexec/WakeBridge/wakebridge
+- データ・SQLite・master key: /Library/Application Support/WakeBridge/
+- ログ: /Library/Logs/WakeBridge/
+- launchd plist: /Library/LaunchDaemons/com.wakebridge.service.plist
+- Service Label: com.wakebridge.service
+- Service user: _wakebridge
+- Web待受: http://127.0.0.1:8787
+
+macOSではinstaller/macos/build-installer.shがrelease binaryをpkgへ梱包する。配布先にRust、Node.js、React、Dockerは不要である。
+
+macOSのService操作は管理者権限で実行する。Finderから/Applications/WakeBridge/WakeBridge-Uninstaller.commandを実行できる。
+
 ## 標準配置
 
 - 運用バイナリ: `C:\Program Files\WakeBridge\wakebridge.exe`
@@ -203,7 +217,7 @@ Serviceが未登録なら`service install`、停止中なら`service start`を�
 Service停止後、アクセス権を保ったまま`C:\ProgramData\WakeBridge`をバックアップする。次のファイル・値を公開repositoryへ含めない。
 
 - `wakebridge.db`、`wakebridge.db-wal`、`wakebridge.db-shm`
-- `master.key.dpapi`
+- master.key.dpapi（Windows）またはmaster.key（macOS）
 - 実際のIP、MAC、SSH Credential、Fingerprint、Token、秘密鍵
 
 ## 2026-08-19 変更記録
@@ -216,3 +230,4 @@ Service停止後、アクセス権を保ったまま`C:\ProgramData\WakeBridge`�
 
 - ビルド済みrelease binaryを梱包するWindowsセットアップEXEの生成手順を追加した。
 - 更新時のService再登録と、アンインストール時のデータ保持・明示削除の手順を追加した。
+- macOSの固定配置、launchd操作、pkg/DMG生成、専用サービスユーザー、データ保持型アンインストール手順を追加した。

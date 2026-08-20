@@ -1,6 +1,6 @@
-use crate::config::{
-    default_data_dir, install_dir, AppConfig, DEFAULT_LISTEN, DISPLAY_NAME, SERVICE_NAME,
-};
+use crate::config::{default_data_dir, install_dir, AppConfig, DEFAULT_LISTEN};
+#[cfg(windows)]
+use crate::config::{DISPLAY_NAME, SERVICE_NAME};
 use anyhow::{bail, Context, Result};
 use std::path::PathBuf;
 
@@ -307,7 +307,7 @@ mod windows_impl {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 mod windows_impl {
     use super::*;
 
@@ -336,4 +336,227 @@ mod windows_impl {
     }
 }
 
+#[cfg(windows)]
 pub use windows_impl::{install, run_service, start, status, stop, uninstall};
+
+#[cfg(target_os = "macos")]
+mod macos_impl {
+    use super::*;
+    use crate::{app::AppState, web};
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+    use std::time::{Duration, Instant};
+
+    const LABEL: &str = "com.wakebridge.service";
+    const PLIST: &str = "/Library/LaunchDaemons/com.wakebridge.service.plist";
+    const SERVICE_USER: &str = "_wakebridge";
+    const LOG_DIR: &str = "/Library/Logs/WakeBridge";
+
+    pub fn run_service() -> Result<()> {
+        let config = AppConfig::new(DEFAULT_LISTEN, Some(default_data_dir()), true)?;
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()?;
+        runtime.block_on(async move {
+            let state = AppState::initialize(config).await?;
+            let mut term =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+            let mut interrupt =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
+            web::serve_foreground(state, async move {
+                tokio::select! { _ = term.recv() => {}, _ = interrupt.recv() => {} }
+            })
+            .await
+        })
+    }
+
+    pub fn install() -> Result<()> {
+        require_root()?;
+        let current = std::env::current_exe().context("resolve current executable")?;
+        let target = install_dir().join("wakebridge");
+        fs::create_dir_all(install_dir())?;
+        fs::create_dir_all(default_data_dir())?;
+        fs::create_dir_all(LOG_DIR)?;
+        if current != target {
+            fs::copy(&current, &target)
+                .with_context(|| format!("copy {} to {}", current.display(), target.display()))?;
+        }
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o755))?;
+        chown_service_paths()?;
+        write_plist()?;
+        let _ = launchctl(&["bootout", "system", PLIST]);
+        launchctl(&["bootstrap", "system", PLIST]).context("register launchd service")?;
+        println!("Installed {LABEL} as launchd service ({SERVICE_USER})");
+        Ok(())
+    }
+
+    pub fn uninstall() -> Result<()> {
+        require_root()?;
+        stop_and_unload()?;
+        if PathBuf::from(PLIST).exists() {
+            fs::remove_file(PLIST)?;
+        }
+        println!("Uninstalled {LABEL}; data directory was preserved.");
+        Ok(())
+    }
+    pub fn start() -> Result<()> {
+        require_root()?;
+        if !PathBuf::from(PLIST).exists() {
+            bail!("{LABEL} is not registered");
+        }
+        let loaded = Command::new("/bin/launchctl")
+            .args(["print", "system/com.wakebridge.service"])
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false);
+        if !loaded {
+            launchctl(&["bootstrap", "system", PLIST]).context("register launchd service")?;
+        }
+        launchctl(&["kickstart", "-k", "system/com.wakebridge.service"])
+            .context("start launchd service")?;
+        wait_running(true)?;
+        println!("Started {LABEL}");
+        Ok(())
+    }
+    pub fn stop() -> Result<()> {
+        require_root()?;
+        require_plist()?;
+        stop_and_unload()?;
+        println!("Stopped {LABEL}");
+        Ok(())
+    }
+    pub fn status() -> Result<()> {
+        let output = Command::new("/bin/launchctl")
+            .args(["print", "system/com.wakebridge.service"])
+            .output()?;
+        if output.status.success() {
+            println!("{LABEL}: running/loaded");
+        } else if PathBuf::from(PLIST).exists() {
+            println!("{LABEL}: registered/stopped");
+        } else {
+            println!("{LABEL}: not registered");
+        }
+        Ok(())
+    }
+
+    fn require_root() -> Result<()> {
+        let status = Command::new("/usr/bin/id").arg("-u").output()?;
+        if !status.status.success() || String::from_utf8_lossy(&status.stdout).trim() != "0" {
+            bail!("macOS service commands require administrator (root) privileges");
+        }
+        Ok(())
+    }
+    fn launchctl(args: &[&str]) -> Result<()> {
+        let status = Command::new("/bin/launchctl")
+            .args(args)
+            .status()
+            .context("run launchctl")?;
+        if !status.success() {
+            bail!("launchctl failed with {status}");
+        }
+        Ok(())
+    }
+    fn stop_and_unload() -> Result<()> {
+        let loaded = Command::new("/bin/launchctl")
+            .args(["print", "system/com.wakebridge.service"])
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false);
+        if !loaded {
+            return Ok(());
+        }
+        let _ = Command::new("/bin/launchctl")
+            .args(["kill", "SIGTERM", "system/com.wakebridge.service"])
+            .status();
+        let _ = wait_running(false);
+        if PathBuf::from(PLIST).exists() {
+            launchctl(&["bootout", "system", PLIST]).context("unregister launchd service")?;
+        }
+        Ok(())
+    }
+    fn require_plist() -> Result<()> {
+        if !PathBuf::from(PLIST).exists() {
+            bail!("{LABEL} is not registered");
+        }
+        Ok(())
+    }
+    fn wait_running(expected: bool) -> Result<()> {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            let running = Command::new("/bin/launchctl")
+                .args(["print", "system/com.wakebridge.service"])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+            if running == expected {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                bail!("{LABEL} did not reach expected state");
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+    }
+    fn write_plist() -> Result<()> {
+        let plist = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>Label</key><string>{LABEL}</string><key>ProgramArguments</key><array><string>{}</string><string>run</string><string>--service</string><string>--listen</string><string>{DEFAULT_LISTEN}</string><string>--data-dir</string><string>{}</string></array><key>UserName</key><string>{SERVICE_USER}</string><key>RunAtLoad</key><true/><key>KeepAlive</key><true/><key>WorkingDirectory</key><string>{}</string><key>StandardOutPath</key><string>{LOG_DIR}/service.log</string><key>StandardErrorPath</key><string>{LOG_DIR}/service.error.log</string></dict></plist>
+"#,
+            install_dir().join("wakebridge").display(),
+            default_data_dir().display(),
+            install_dir().display()
+        );
+        fs::write(PLIST, plist)?;
+        fs::set_permissions(PLIST, fs::Permissions::from_mode(0o644))?;
+        Ok(())
+    }
+    fn chown_service_paths() -> Result<()> {
+        if !Command::new("/usr/bin/id")
+            .arg(SERVICE_USER)
+            .status()?
+            .success()
+        {
+            bail!("dedicated service user {SERVICE_USER} does not exist");
+        }
+        let status = Command::new("/usr/sbin/chown")
+            .args([
+                "-R",
+                &format!("{SERVICE_USER}:staff"),
+                default_data_dir().to_str().unwrap(),
+                LOG_DIR,
+            ])
+            .status()?;
+        if !status.success() {
+            bail!("chown failed with {status}");
+        }
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub use macos_impl::{install, run_service, start, status, stop, uninstall};
+
+#[cfg(not(any(windows, target_os = "macos")))]
+mod macos_impl {
+    use super::*;
+    pub fn run_service() -> Result<()> {
+        bail!("service commands are not available on this platform")
+    }
+    pub fn install() -> Result<()> {
+        bail!("service commands are not available on this platform")
+    }
+    pub fn uninstall() -> Result<()> {
+        bail!("service commands are not available on this platform")
+    }
+    pub fn start() -> Result<()> {
+        bail!("service commands are not available on this platform")
+    }
+    pub fn stop() -> Result<()> {
+        bail!("service commands are not available on this platform")
+    }
+    pub fn status() -> Result<()> {
+        bail!("service commands are not available on this platform")
+    }
+}

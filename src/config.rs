@@ -2,7 +2,9 @@ use anyhow::{Context, Result};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+#[cfg(windows)]
 pub const SERVICE_NAME: &str = "WakeBridge";
+#[cfg(windows)]
 pub const DISPLAY_NAME: &str = "WakeBridge";
 pub const DEFAULT_LISTEN: &str = "127.0.0.1:8787";
 
@@ -35,7 +37,11 @@ pub fn default_data_dir() -> PathBuf {
     {
         PathBuf::from(r"C:\ProgramData\WakeBridge")
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        PathBuf::from("/Library/Application Support/WakeBridge")
+    }
+    #[cfg(all(not(windows), not(target_os = "macos")))]
     {
         PathBuf::from("data")
     }
@@ -46,7 +52,11 @@ pub fn install_dir() -> PathBuf {
     {
         PathBuf::from(r"C:\Program Files\WakeBridge")
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        PathBuf::from("/usr/local/libexec/WakeBridge")
+    }
+    #[cfg(all(not(windows), not(target_os = "macos")))]
     {
         PathBuf::from("target")
     }

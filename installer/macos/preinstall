@@ -1,0 +1,18 @@
+#!/bin/bash
+set -euo pipefail
+PLIST=/Library/LaunchDaemons/com.wakebridge.service.plist
+if [ -x /usr/local/libexec/WakeBridge/wakebridge ]; then
+  /usr/local/libexec/WakeBridge/wakebridge service uninstall >/dev/null 2>&1 || true
+elif [ -f "$PLIST" ]; then
+  /bin/launchctl bootout system "$PLIST" >/dev/null 2>&1 || true
+fi
+if ! /usr/bin/id _wakebridge >/dev/null 2>&1; then
+  uid=$(/usr/bin/dscl . -list /Users UniqueID | /usr/bin/awk '$2 >= 400 && $2 < 500 {print $2}' | /usr/bin/sort -n | /usr/bin/tail -1)
+  uid=$(( ${uid:-400} + 1 ))
+  /usr/bin/dscl . -create /Users/_wakebridge
+  /usr/bin/dscl . -create /Users/_wakebridge UserShell /usr/bin/false
+  /usr/bin/dscl . -create /Users/_wakebridge NFSHomeDirectory /var/empty
+  /usr/bin/dscl . -create /Users/_wakebridge UniqueID "$uid"
+  /usr/bin/dscl . -create /Users/_wakebridge PrimaryGroupID 20
+  /usr/bin/dscl . -create /Users/_wakebridge RealName "WakeBridge service"
+fi

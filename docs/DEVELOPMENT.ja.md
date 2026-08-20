@@ -9,7 +9,7 @@ WakeBridgeは、Windows Server上で複数拠点のWake-on-LANを管理するRus
 - Rust stable / MSVC
 - Tokio、Axum、Askama、SQLite（rusqlite bundled）、Serde
 - Argon2idによるパスワードハッシュ
-- AES-256-GCM + Windows DPAPIによるSSH Credential暗号化
+- AES-256-GCMによるSSH Credential暗号化。WindowsはDPAPI、macOSは専用サービスユーザー所有・0600のmaster key保護ファイルを使用する。
 - tracingによるログ
 - サーバーサイドHTML + Vanilla JavaScript
 - Windows Serviceは`windows-service`でSCMへ接続
@@ -24,11 +24,11 @@ WakeBridgeは、Windows Server上で複数拠点のWake-on-LANを管理するRus
 | `src/db.rs` | SQLite接続、migration、CRUD、監査・履歴 |
 | `src/secrets.rs` | Credential暗号化、DPAPI master key |
 | `src/providers/` | Provider traitとYamaha RTX実装 |
-| `src/service.rs` | Windows Serviceのinstall/start/stop/status/uninstall |
+| `src/service.rs` | Windows SCM / macOS launchdのinstall/start/stop/status/uninstall |
 | `templates/` | Askama HTMLテンプレート（UIは日本語） |
 | `src/static/` | CSS、Vanilla JavaScript |
 | `deploy/iis/` | IIS URL Rewrite / ARR設定例 |
-| `installer/` | ビルド済みrelease binaryを梱包するInno Setup定義と生成スクリプト |
+| `installer/` | Windows Inno SetupとmacOS pkgbuild/productbuildの生成スクリプト |
 | `docs/` | 開発・操作ドキュメント |
 
 ## 開発環境
@@ -134,3 +134,5 @@ SQLite migrationは`src/db.rs`の起動処理で適用する。実データは`C
 - ビルド済みrelease binaryを梱包するInno Setup定義と`installer/build-installer.ps1`を追加した。
 - Serviceのinstall/start/stop/uninstallを冪等化し、更新・削除時に状態遷移の完了を待つようにした。
 - アンインストール時のデータ保持・明示削除を設計し、秘密情報をインストーラーへ含めないことを検証対象に追加した。
+- macOS向けにlaunchdサービス、_wakebridge専用ユーザー、Apple標準pkg/DMG生成スクリプト、データ保持型アンインストーラーを追加した。
+- macOSのmaster keyは/Library/Application Support/WakeBridge/master.keyに0600で保存し、サービスユーザー以外から読めないようにした。

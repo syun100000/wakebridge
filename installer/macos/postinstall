@@ -1,0 +1,4 @@
+#!/bin/bash
+set -euo pipefail
+/usr/local/libexec/WakeBridge/wakebridge service install
+/usr/local/libexec/WakeBridge/wakebridge service start
